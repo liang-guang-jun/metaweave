@@ -1,0 +1,247 @@
+# =============================================================================
+#  server - project metadata and tooling.
+#
+# This single file drives the whole Python side of the repository:
+#   [project] / [dependency-groups] -> uv
+#   [build-system]                   -> hatchling
+#   [tool.ruff*]                     -> linting, import order and formatting
+#   [tool.mypy*]                     -> static typing
+#   [tool.pytest.ini_options]        -> test discovery and defaults
+#   [tool.coverage*]                 -> coverage thresholds
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Project metadata
+# -----------------------------------------------------------------------------
+[project]
+name = "server"
+version = "0.1.0"
+description = "backend service."
+readme = "README.md"
+authors = [{ name = "GUANGJUN LIANG", email = "guangjun_l@icloud.com" }]
+# Keep this in sync with [tool.ruff].target-version and [tool.mypy].python_version.
+requires-python = ">=3.13"
+# Runtime dependencies: everything `src` may import while the service runs.
+dependencies = [
+  "aiocache>=0.12.3",
+  "alembic>=1.20.0",
+  "cryptography>=44.0.0",
+  "dependency-injector>=4.49.1",
+  "fastapi>=0.141.1",
+  "pwdlib[argon2]>=0.3.1",
+  "pydantic-settings>=2.15.0",
+  "pyjwt>=2.14.0",
+  "python-multipart>=0.0.20",
+  "pyyaml>=6.0.3",
+  "sqlalchemy[asyncio]>=2.0.54",
+  "sqlglot>=30.18.0",
+  "typer>=0.27.2",
+  "uvicorn[standard]>=0.53.0",
+]
+
+[project.scripts]
+vizer = "server.app.cli.main:app"
+
+# -----------------------------------------------------------------------------
+# Build
+# -----------------------------------------------------------------------------
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# `src` is both the source root and the top-level import package, so modules are
+# imported as `src.<subpackage>.<module>`.
+packages = ["server"]
+
+# -----------------------------------------------------------------------------
+# Dependency groups -- tooling that is never part of the published package
+# -----------------------------------------------------------------------------
+[dependency-groups]
+# Installed by a plain `uv sync` / used by `uv run <tool>`.
+dev = [
+  "aiosqlite>=0.22.1",
+  "mypy>=2.3.1",
+  "pytest>=9.1.1",
+  "pytest-asyncio>=1.4.0",
+  "pytest-cov>=7.1.0",
+  "ruff>=0.16.8",
+  "types-pyyaml>=6.0.12.20260906",
+]
+# Site tooling only: `uv sync --group docs`.
+docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.7.7"]
+
+# -----------------------------------------------------------------------------
+# Ruff -- linting and formatting (https://docs.astral.sh/ruff/)
+# -----------------------------------------------------------------------------
+[tool.ruff]
+# 88 characters balances readability and practicality.
+line-length = 88
+# Keep in sync with requires-python.
+target-version = "py313"
+# Declare the source root so Ruff resolves first-party imports correctly.
+src = ["server"]
+
+# Directories that never contain hand-written code.
+exclude = [
+  ".bzr",
+  ".direnv",
+  ".eggs",
+  ".git",
+  ".hg",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "build",
+  "dist",
+]
+
+[tool.ruff.lint]
+select = [
+  "F",     # Pyflakes: real errors (undefined names, unused imports, ...)
+  "E",     # pycodestyle errors
+  "W",     # pycodestyle warnings
+  "D",     # pydocstyle: docstring conventions
+  "I",     # isort: import order
+  "N",     # pep8-naming
+  "B",     # flake8-bugbear: likely bugs
+  "C4",    # flake8-comprehensions
+  "UP",    # pyupgrade: modern syntax for the target version
+  "RUF",   # Ruff-specific rules
+  "ASYNC", # flake8-async: blocking calls inside async code
+]
+# Rules that fight the formatter or are stricter than this project wants.
+ignore = [
+  "E501", # line length is the formatter's job
+]
+
+[tool.ruff.lint.pydocstyle]
+# Google style; it also settles the D203/D211 and D212/D213 conflicts that the
+# bare D rule set would report for every docstring.
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# A package marker is a marker, not a module: it needs no docstring of its own.
+"**/__init__.py" = ["D104"]
+# A test name already says what it checks, so tests need no docstrings.
+"tests/**" = ["D100", "D101", "D102", "D103", "D104", "D107"]
+# IAM is being introduced incrementally; its public API is covered by strict
+# typing/tests while documentation is completed alongside each use-case slice.
+"server/iam/**" = ["D"]
+"server/app/bootstrap/**" = ["D"]
+"server/configs/**" = ["D"]
+# Alembic generates these files itself (irregular module names, no docstrings).
+"**/alembic/versions/**" = ["D", "N999"]
+
+# Make isort treat `src` as first-party.
+[tool.ruff.lint.isort]
+known-first-party = ["server"]
+
+[tool.ruff.format]
+# Double quotes and space indentation, i.e. the Black-compatible defaults.
+quote-style = "double"
+indent-style = "space"
+# Also format the code examples embedded in docstrings.
+docstring-code-format = true
+
+# -----------------------------------------------------------------------------
+# mypy -- static typing
+# -----------------------------------------------------------------------------
+[tool.mypy]
+# Keep in sync with requires-python.
+python_version = "3.13"
+# Strict is the recommended starting point for a new project.
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+# Also flag code that can never run, e.g. a branch a narrowing already excludes.
+warn_unreachable = true
+show_error_codes = true
+show_error_context = true
+warn_unused_configs = true
+# Understand pydantic's generated code (extra fields, aliases, required fields).
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[[tool.mypy.overrides]]
+# aiocache ships no type information and has no stubs on PyPI.
+module = ["aiocache.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Keep `src` strict while letting tests stay terse: a test body rarely needs
+# every local helper annotated (shared fixtures and helpers still get types).
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+# -----------------------------------------------------------------------------
+# pyright / Pylance -- IntelliSense only
+# -----------------------------------------------------------------------------
+[tool.pyright]
+# mypy (see above) is this project's type checker, so the editor's language
+# server runs without type checking. These four rules are the ones that stay
+# enabled even in "off" mode, and they are the warnings this project does not
+# want.
+#
+# This block is the single source of Pylance configuration: a pyproject.toml
+# carrying [tool.pyright] outranks `.vscode/settings.json`, which is why the
+# matching python.analysis.* settings are not duplicated there (Pylance flags
+# them with "cannot be set when a pyrightconfig.json or pyproject.toml is being
+# used" and ignores them). The pyright CLI reads this same block.
+#
+# `typeCheckingMode` must stay explicit: the default for a config file is
+# "standard", not the editor's "off".
+typeCheckingMode = "off"
+reportMissingImports = "none"
+reportMissingModuleSource = "none"
+reportInvalidTypeForm = "none"
+reportUndefinedVariable = "none"
+
+# -----------------------------------------------------------------------------
+# pytest
+# -----------------------------------------------------------------------------]
+[tool.pytest.ini_options]
+# Where tests live, and what pytest treats as a test.
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+# pytest-asyncio's "auto" mode: `async def test_...` needs no marker.
+asyncio_mode = "auto"
+addopts = [
+  "-v",                        # one line per test
+  "--tb=short",                # short tracebacks
+  "--strict-markers",          # a mistyped marker is an error, not a warning
+  "--strict-config",           # same for a mistyped option in this file
+  "-ra",                       # summary of every non-passing result
+  "--cov=server",              # coverage of the package (pytest-cov)
+  "--cov-report=term-missing", # show the lines that are not covered
+]
+markers = [
+  "slow: marks tests that take a long time to run",
+  "integration: marks tests that need real infrastructure (database, ...)",
+]
+# Warnings are errors; only DeprecationWarnings from dependencies are allowed.
+filterwarnings = ["error", "ignore::DeprecationWarning"]
+
+# -----------------------------------------------------------------------------
+# coverage.py (driven by pytest-cov)
+# -----------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["server"]
+branch = true
+omit = ["*/tests/*", "*/__main__.py"]
+
+[tool.coverage.report]
+# Added on top of coverage's built-in exclusions (`# pragma: no cover`,
+# `raise NotImplementedError`, `if 0:`, ...), so those stay in effect.
+exclude_also = ["if TYPE_CHECKING:", "@abstractmethod"]
+# Below this the run fails; raise the bar as the suite grows.
+fail_under = 80

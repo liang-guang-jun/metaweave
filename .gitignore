@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+.cache/
+
+# SQLite Files
+
+*.sqlite
+*.db
