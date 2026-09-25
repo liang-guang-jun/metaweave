@@ -18,3 +18,7 @@ wheels/
 
 *.sqlite
 *.db
+
+# Configurations
+server/config/*
+!server/config/config.default.yaml

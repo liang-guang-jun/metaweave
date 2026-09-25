@@ -1,0 +1,34 @@
+# This file is mandatory. It alone declares available overlay tags and priority.
+# Existing files are merged after this file from lower to higher priority.
+# Missing profile files are skipped; this registry defines the merge order.
+configuration:
+  profiles:
+    dev:
+      priority: 100
+    uat:
+      priority: 200
+    prod:
+      priority: 300
+
+app:
+  name: metaweave
+  debug: false
+
+database:
+  url: sqlite+aiosqlite:///metaweave.db
+  echo: false
+  busy_timeout_ms: 5000
+
+logging:
+  level: INFO
+  json: false
+  colors: true
+  silenced_loggers:
+    - uvicorn
+    - sqlalchemy.engine
+  log_request_headers: false
+
+server:
+  host: 127.0.0.1
+  port: 8000
+  reload: false

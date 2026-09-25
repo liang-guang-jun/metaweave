@@ -35,12 +35,13 @@ dependencies = [
   "pyyaml>=6.0.3",
   "sqlalchemy[asyncio]>=2.0.54",
   "sqlglot>=30.18.0",
+  "structlog>=25.5.0",
   "typer>=0.27.2",
   "uvicorn[standard]>=0.53.0",
 ]
 
 [project.scripts]
-vizer = "server.app.cli.main:app"
+mw = "server.app.cli.main:app"
 
 # -----------------------------------------------------------------------------
 # Build
@@ -61,6 +62,7 @@ packages = ["server"]
 # Installed by a plain `uv sync` / used by `uv run <tool>`.
 dev = [
   "aiosqlite>=0.22.1",
+  "httpx2>=0.28.0",
   "mypy>=2.3.1",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
@@ -170,17 +172,6 @@ init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
 
-[[tool.mypy.overrides]]
-# aiocache ships no type information and has no stubs on PyPI.
-module = ["aiocache.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-# Keep `src` strict while letting tests stay terse: a test body rarely needs
-# every local helper annotated (shared fixtures and helpers still get types).
-module = ["tests.*"]
-disallow_untyped_defs = false
-
 # -----------------------------------------------------------------------------
 # pyright / Pylance -- IntelliSense only
 # -----------------------------------------------------------------------------
@@ -237,7 +228,7 @@ filterwarnings = ["error", "ignore::DeprecationWarning"]
 [tool.coverage.run]
 source = ["server"]
 branch = true
-omit = ["*/tests/*", "*/__main__.py"]
+omit = ["*/tests/*", "*/__main__.py", "server/migrations/*"]
 
 [tool.coverage.report]
 # Added on top of coverage's built-in exclusions (`# pragma: no cover`,
