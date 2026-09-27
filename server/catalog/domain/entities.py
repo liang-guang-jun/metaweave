@@ -15,11 +15,25 @@ from .value_objects import *
 
 
 class Workspace(VersionedAggregate[UUID]):
-    def __init__(self, workspace_id: WorkspaceId, tenant_id: TenantId, display_name: str, description: str = "", *, active: bool = True, version: int = 0) -> None:
+    def __init__(
+        self,
+        workspace_id: WorkspaceId,
+        tenant_id: TenantId,
+        display_name: str,
+        description: str = "",
+        *,
+        active: bool = True,
+        version: int = 0,
+    ) -> None:
         super().__init__(version=version)
         if not display_name.strip():
             raise CatalogDomainError("workspace display name is required")
-        self._id, self.tenant_id, self.display_name, self.description = workspace_id, tenant_id, display_name.strip(), description
+        self._id, self.tenant_id, self.display_name, self.description = (
+            workspace_id,
+            tenant_id,
+            display_name.strip(),
+            description,
+        )
         self.active = active
 
     @property
@@ -27,14 +41,37 @@ class Workspace(VersionedAggregate[UUID]):
         return self._id
 
     @classmethod
-    def create(cls, workspace_id: WorkspaceId, tenant_id: TenantId, display_name: str, description: str = "") -> Workspace:
+    def create(
+        cls,
+        workspace_id: WorkspaceId,
+        tenant_id: TenantId,
+        display_name: str,
+        description: str = "",
+    ) -> Workspace:
         value = cls(workspace_id, tenant_id, display_name, description)
-        value._record_state_change(WorkspaceCreated(value.id, tenant_id, value.display_name))
+        value._record_state_change(
+            WorkspaceCreated(value.id, tenant_id, value.display_name)
+        )
         return value
 
     @classmethod
-    def restore(cls, workspace_id: WorkspaceId, tenant_id: TenantId, display_name: str, description: str, active: bool, version: int) -> Workspace:
-        return cls(workspace_id, tenant_id, display_name, description, active=active, version=version)
+    def restore(
+        cls,
+        workspace_id: WorkspaceId,
+        tenant_id: TenantId,
+        display_name: str,
+        description: str,
+        active: bool,
+        version: int,
+    ) -> Workspace:
+        return cls(
+            workspace_id,
+            tenant_id,
+            display_name,
+            description,
+            active=active,
+            version=version,
+        )
 
     def rename(self, display_name: str) -> None:
         if not display_name.strip():
@@ -55,9 +92,25 @@ class Workspace(VersionedAggregate[UUID]):
 
 
 class WorkspaceMembership(VersionedAggregate[UUID]):
-    def __init__(self, membership_id: WorkspaceMembershipId, workspace_id: WorkspaceId, tenant_id: TenantId, user_id: UserId, role: WorkspaceRole, *, active: bool = False, joined_at: datetime | None = None, version: int = 0) -> None:
+    def __init__(
+        self,
+        membership_id: WorkspaceMembershipId,
+        workspace_id: WorkspaceId,
+        tenant_id: TenantId,
+        user_id: UserId,
+        role: WorkspaceRole,
+        *,
+        active: bool = False,
+        joined_at: datetime | None = None,
+        version: int = 0,
+    ) -> None:
         super().__init__(version=version)
-        self._id, self.workspace_id, self.tenant_id, self.user_id = membership_id, workspace_id, tenant_id, user_id
+        self._id, self.workspace_id, self.tenant_id, self.user_id = (
+            membership_id,
+            workspace_id,
+            tenant_id,
+            user_id,
+        )
         self.role, self.active, self.joined_at = role, active, joined_at
 
     @property
@@ -65,14 +118,42 @@ class WorkspaceMembership(VersionedAggregate[UUID]):
         return self._id
 
     @classmethod
-    def invite(cls, membership_id: WorkspaceMembershipId, workspace_id: WorkspaceId, tenant_id: TenantId, user_id: UserId, role: WorkspaceRole) -> WorkspaceMembership:
+    def invite(
+        cls,
+        membership_id: WorkspaceMembershipId,
+        workspace_id: WorkspaceId,
+        tenant_id: TenantId,
+        user_id: UserId,
+        role: WorkspaceRole,
+    ) -> WorkspaceMembership:
         value = cls(membership_id, workspace_id, tenant_id, user_id, role)
-        value._record_state_change(WorkspaceMembershipInvited(value.id, workspace_id, user_id))
+        value._record_state_change(
+            WorkspaceMembershipInvited(value.id, workspace_id, user_id)
+        )
         return value
 
     @classmethod
-    def restore(cls, membership_id: WorkspaceMembershipId, workspace_id: WorkspaceId, tenant_id: TenantId, user_id: UserId, role: WorkspaceRole, active: bool, joined_at: datetime | None, version: int) -> WorkspaceMembership:
-        return cls(membership_id, workspace_id, tenant_id, user_id, role, active=active, joined_at=joined_at, version=version)
+    def restore(
+        cls,
+        membership_id: WorkspaceMembershipId,
+        workspace_id: WorkspaceId,
+        tenant_id: TenantId,
+        user_id: UserId,
+        role: WorkspaceRole,
+        active: bool,
+        joined_at: datetime | None,
+        version: int,
+    ) -> WorkspaceMembership:
+        return cls(
+            membership_id,
+            workspace_id,
+            tenant_id,
+            user_id,
+            role,
+            active=active,
+            joined_at=joined_at,
+            version=version,
+        )
 
     def accept(self, now: datetime) -> None:
         if not self.active:
@@ -101,12 +182,34 @@ class WorkspaceMembership(VersionedAggregate[UUID]):
 
 
 class Node(VersionedAggregate[UUID]):
-    def __init__(self, node_id: NodeId, tenant_id: TenantId, workspace_id: WorkspaceId, parent_id: NodeId | None, node_type: NodeType, display_name: str, description: str = "", properties: dict[str, Any] | None = None, *, is_deleted: bool = False, version: int = 0) -> None:
+    def __init__(
+        self,
+        node_id: NodeId,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId,
+        parent_id: NodeId | None,
+        node_type: NodeType,
+        display_name: str,
+        description: str = "",
+        properties: dict[str, Any] | None = None,
+        *,
+        is_deleted: bool = False,
+        version: int = 0,
+    ) -> None:
         super().__init__(version=version)
         if not display_name.strip():
             raise CatalogDomainError("node display name is required")
-        self._id, self.tenant_id, self.workspace_id, self.parent_id = node_id, tenant_id, workspace_id, parent_id
-        self.node_type, self.display_name, self.description = node_type, display_name.strip(), description
+        self._id, self.tenant_id, self.workspace_id, self.parent_id = (
+            node_id,
+            tenant_id,
+            workspace_id,
+            parent_id,
+        )
+        self.node_type, self.display_name, self.description = (
+            node_type,
+            display_name.strip(),
+            description,
+        )
         self.properties, self.is_deleted = dict(properties or {}), is_deleted
 
     @property
@@ -114,14 +217,58 @@ class Node(VersionedAggregate[UUID]):
         return self._id
 
     @classmethod
-    def create(cls, node_id: NodeId, tenant_id: TenantId, workspace_id: WorkspaceId, parent_id: NodeId | None, node_type: NodeType, display_name: str, description: str = "", properties: dict[str, Any] | None = None) -> Node:
-        value = cls(node_id, tenant_id, workspace_id, parent_id, node_type, display_name, description, properties)
-        value._record_state_change(NodeCreated(value.id, workspace_id, node_type, value.display_name))
+    def create(
+        cls,
+        node_id: NodeId,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId,
+        parent_id: NodeId | None,
+        node_type: NodeType,
+        display_name: str,
+        description: str = "",
+        properties: dict[str, Any] | None = None,
+    ) -> Node:
+        value = cls(
+            node_id,
+            tenant_id,
+            workspace_id,
+            parent_id,
+            node_type,
+            display_name,
+            description,
+            properties,
+        )
+        value._record_state_change(
+            NodeCreated(value.id, workspace_id, node_type, value.display_name)
+        )
         return value
 
     @classmethod
-    def restore(cls, node_id: NodeId, tenant_id: TenantId, workspace_id: WorkspaceId, parent_id: NodeId | None, node_type: NodeType, display_name: str, description: str, properties: dict[str, Any], is_deleted: bool, version: int) -> Node:
-        return cls(node_id, tenant_id, workspace_id, parent_id, node_type, display_name, description, properties, is_deleted=is_deleted, version=version)
+    def restore(
+        cls,
+        node_id: NodeId,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId,
+        parent_id: NodeId | None,
+        node_type: NodeType,
+        display_name: str,
+        description: str,
+        properties: dict[str, Any],
+        is_deleted: bool,
+        version: int,
+    ) -> Node:
+        return cls(
+            node_id,
+            tenant_id,
+            workspace_id,
+            parent_id,
+            node_type,
+            display_name,
+            description,
+            properties,
+            is_deleted=is_deleted,
+            version=version,
+        )
 
     def rename(self, display_name: str) -> None:
         if not display_name.strip():

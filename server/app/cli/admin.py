@@ -39,7 +39,9 @@ def create() -> None:
         _abort("Email cannot be empty.")
 
     password = typer.prompt("Password", hide_input=True, confirmation_prompt=False)
-    confirmation = typer.prompt("Confirm password", hide_input=True, confirmation_prompt=False)
+    confirmation = typer.prompt(
+        "Confirm password", hide_input=True, confirmation_prompt=False
+    )
     if password != confirmation:
         _abort("Passwords do not match.")
 

@@ -57,7 +57,18 @@ async def run_migrations_online() -> None:
     await connectable.dispose()
 
 
-if context.is_offline_mode():
+def injected_connection() -> Connection | None:
+    """Return the connection an embedder supplied through the config."""
+    connection = config.attributes.get("connection")
+    return connection if isinstance(connection, Connection) else None
+
+
+if (connection := injected_connection()) is not None:
+    # The embedder already owns an engine. Reusing its connection matters for an
+    # in-memory SQLite database, where a second engine would migrate a database
+    # the running process never sees.
+    do_run_migrations(connection)
+elif context.is_offline_mode():
     run_migrations_offline()
 else:
     asyncio.run(run_migrations_online())

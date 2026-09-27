@@ -62,11 +62,15 @@ packages = ["server"]
 # Installed by a plain `uv sync` / used by `uv run <tool>`.
 dev = [
   "aiosqlite>=0.22.1",
+  "databricks-sdk>=0.143.0",
   "httpx2>=0.28.0",
   "mypy>=2.3.1",
+  "pathspec>=1.0.0",
   "pytest>=9.1.1",
   "pytest-asyncio>=1.4.0",
   "pytest-cov>=7.1.0",
+  "python-dotenv>=1.0.0",
+  "rich>=15.0.0",
   "ruff>=0.16.8",
   "types-pyyaml>=6.0.12.20260906",
 ]
@@ -251,7 +255,13 @@ filterwarnings = ["error", "ignore::DeprecationWarning"]
 [tool.coverage.run]
 source = ["server"]
 branch = true
-omit = ["*/tests/*", "*/__main__.py", "server/migrations/*", "server/iam/*", "server/catalog/*"]
+omit = [
+  "*/tests/*",
+  "*/__main__.py",
+  "server/migrations/*",
+  "server/iam/*",
+  "server/catalog/*",
+]
 
 [tool.coverage.report]
 # Added on top of coverage's built-in exclusions (`# pragma: no cover`,

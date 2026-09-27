@@ -92,6 +92,8 @@ class RegisterUserHandler(CommandHandler[RegisterUser, UserId]):
         user = User.register(
             message.email, self.hasher.hash(message.password), UserId(self.ids.new())
         )
+        if message.skip_verify:
+            user.verify()
         await repo.add(user)
         return user.id
 

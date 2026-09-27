@@ -2,7 +2,6 @@
 
 from .database import (
     create_async_engine,
-    create_kernel_schema,
     create_session_factory,
 )
 from .outbox import SqlAlchemyOutbox
@@ -14,6 +13,5 @@ __all__ = [
     "SqlAlchemyOutbox",
     "SqlAlchemyUnitOfWork",
     "create_async_engine",
-    "create_kernel_schema",
     "create_session_factory",
 ]

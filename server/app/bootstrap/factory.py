@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from sqlalchemy.engine import make_url
+
 from ...catalog.infrastructure.acl import IamCatalogAclAuthorizationService
 from ...catalog.infrastructure.persistence.sqlalchemy.repositories import (
     SqlAlchemyCatalogReadStore,
@@ -37,7 +41,7 @@ from ...kernel.infrastructure.persistence.sqlalchemy import (
 from ...kernel.infrastructure.persistence.sqlalchemy.unit_of_work import (
     SqlAlchemyUnitOfWork,
 )
-from .config import AppConfig
+from .config import AppConfig, repository_root
 from .container import Container
 from .initializers import (
     CatalogContextDependencies,
@@ -54,7 +58,7 @@ def create_factory(config: AppConfig | None = None) -> Container:
     resolved_config = config or load_config()
     configure_logging(resolved_config.logging)
     engine = create_async_engine(
-        resolved_config.database.url,
+        _resolve_database_url(resolved_config.database.url),
         echo=resolved_config.database.echo,
         sqlite_busy_timeout_ms=resolved_config.database.busy_timeout_ms,
     )
@@ -107,3 +111,23 @@ def create_factory(config: AppConfig | None = None) -> Container:
 def create_container(config: AppConfig | None = None) -> Container:
     """Backward-compatible alias for callers using the previous factory name."""
     return create_factory(config)
+
+
+def _resolve_database_url(url: str) -> str:
+    """Anchor a relative SQLite file path to the repository root.
+
+    A relative SQLite path is resolved against the process working directory, so
+    running the server from another folder (for example ``client/``) would
+    silently create a second database file there. Pinning the file keeps the
+    single database managed by ``mw db`` and Alembic.
+    """
+    parsed = make_url(url)
+    database = parsed.database
+    if parsed.get_backend_name() != "sqlite" or not database:
+        return url
+    if database == ":memory:":
+        return url
+    path = Path(database)
+    if path.is_absolute():
+        return url
+    return str(parsed.set(database=str(repository_root() / path)))

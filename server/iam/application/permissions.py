@@ -133,13 +133,9 @@ class RelationshipAclSynchronizer:
             for entry in acl.entries.values()
         )
 
-    async def has_system_admin_access(
-        self, uow: UnitOfWork, user_id: UserId
-    ) -> bool:
+    async def has_system_admin_access(self, uow: UnitOfWork, user_id: UserId) -> bool:
         """Check the instance administrator relationship from the system ACL."""
-        acl = await self.acls(uow).get_acl(
-            SYSTEM_TENANT_ID, "system", "instance"
-        )
+        acl = await self.acls(uow).get_acl(SYSTEM_TENANT_ID, "system", "instance")
         if acl is None:
             return False
         subjects = await self._subjects_for(user_id)
@@ -153,9 +149,7 @@ class RelationshipAclSynchronizer:
 
     async def has_any_system_admin(self, uow: UnitOfWork) -> bool:
         """Return whether the instance ACL contains an active admin grant."""
-        acl = await self.acls(uow).get_acl(
-            SYSTEM_TENANT_ID, "system", "instance"
-        )
+        acl = await self.acls(uow).get_acl(SYSTEM_TENANT_ID, "system", "instance")
         if acl is None:
             return False
         action = system_role_action(SystemAdminRole.SUPER_ADMIN)
@@ -167,7 +161,10 @@ class RelationshipAclSynchronizer:
     async def _subjects_for(self, user_id: UserId) -> frozenset[Subject]:
         subjects = {tenant_subject(user_id)}
         if self.groups is not None:
-            subjects.update(group_subject(group_id) for group_id in await self.groups.groups_for_user(user_id))
+            subjects.update(
+                group_subject(group_id)
+                for group_id in await self.groups.groups_for_user(user_id)
+            )
         return frozenset(subjects)
 
 

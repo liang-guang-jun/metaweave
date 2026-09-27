@@ -16,9 +16,7 @@ def upgrade() -> None:
     op.rename_table("iam_memberships", "iam_tenant_memberships")
     op.add_column(
         "iam_sso_providers",
-        sa.Column(
-            "client_secret", sa.String(1024), nullable=False, server_default=""
-        ),
+        sa.Column("client_secret", sa.String(1024), nullable=False, server_default=""),
     )
     op.create_table(
         "iam_system_admins",
@@ -48,7 +46,9 @@ def upgrade() -> None:
             "fk_iam_service_principal_principal", "iam_principals", ["id"], ["id"]
         )
     with op.batch_alter_table("iam_users", recreate="always") as batch:
-        batch.create_foreign_key("fk_iam_user_principal", "iam_principals", ["id"], ["id"])
+        batch.create_foreign_key(
+            "fk_iam_user_principal", "iam_principals", ["id"], ["id"]
+        )
 
 
 def downgrade() -> None:

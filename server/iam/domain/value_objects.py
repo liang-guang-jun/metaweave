@@ -242,7 +242,9 @@ ACL_POLICY_MATRIX: dict[tuple[ResourceType, IAMRole], frozenset[Action]] = {
 }
 
 
-def actions_for_roles(resource_type: str, roles: set[IAMRole] | frozenset[IAMRole]) -> frozenset[Action]:
+def actions_for_roles(
+    resource_type: str, roles: set[IAMRole] | frozenset[IAMRole]
+) -> frozenset[Action]:
     """Return the union of operations granted by IAM roles for a resource."""
     if IAMRole.SYSTEM_SUPER_ADMIN in roles:
         return frozenset(Action)

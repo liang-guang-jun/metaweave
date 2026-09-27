@@ -26,12 +26,14 @@ def upgrade() -> None:
     # Existing relationship rows must receive their ACL representation before
     # application authorization starts consulting ACLs as the source of truth.
     connection = op.get_bind()
-    membership_rows = list(connection.execute(
-        sa.text(
-            "SELECT tenant_id, user_id, membership_type "
-            "FROM iam_tenant_memberships WHERE active = 1"
-        )
-    ).mappings())
+    membership_rows = list(
+        connection.execute(
+            sa.text(
+                "SELECT tenant_id, user_id, membership_type "
+                "FROM iam_tenant_memberships WHERE active = 1"
+            )
+        ).mappings()
+    )
     for row in membership_rows:
         tenant_id = str(row["tenant_id"])
         scope = connection.execute(
@@ -88,9 +90,11 @@ def upgrade() -> None:
                 "tenant_id": "00000000-0000-0000-0000-000000000000",
             },
         )
-    for row in list(connection.execute(
-        sa.text("SELECT user_id FROM iam_system_admins WHERE active = 1")
-    ).mappings()):
+    for row in list(
+        connection.execute(
+            sa.text("SELECT user_id FROM iam_system_admins WHERE active = 1")
+        ).mappings()
+    ):
         connection.execute(
             sa.text(
                 "INSERT OR IGNORE INTO iam_acl_entries "

@@ -151,9 +151,7 @@ class Membership(VersionedAggregate[UUID]):
     ) -> None:
         super().__init__(version=version)
         resolved_type = membership_type or (
-            TenantMembershipType.ADMIN
-            if is_admin
-            else TenantMembershipType.MEMBER
+            TenantMembershipType.ADMIN if is_admin else TenantMembershipType.MEMBER
         )
         self._id, self.tenant_id, self.user_id = membership_id, tenant_id, user_id
         self.active, self.membership_type = active, resolved_type
@@ -348,9 +346,7 @@ class GroupMembership(VersionedAggregate[UUID]):
         member_id: UserId | GroupId,
         member_type: GroupMemberType | None = None,
     ) -> GroupMembership:
-        membership = cls(
-            membership_id, group_id, member_id, member_type=member_type
-        )
+        membership = cls(membership_id, group_id, member_id, member_type=member_type)
         membership._record_state_change(
             GroupMembershipCreated(
                 membership.id, group_id, member_id, membership.member_type
@@ -405,7 +401,14 @@ class SSOProvider(VersionedAggregate[UUID]):
         super().__init__(version=version)
         if not issuer.strip() or not client_id.strip() or not client_secret.strip():
             raise IamDomainError("SSO issuer, client id and secret are required")
-        self._id, self.tenant_id, self.issuer, self.client_id, self.client_secret, self.active = (
+        (
+            self._id,
+            self.tenant_id,
+            self.issuer,
+            self.client_id,
+            self.client_secret,
+            self.active,
+        ) = (
             provider_id,
             tenant_id,
             issuer.strip(),

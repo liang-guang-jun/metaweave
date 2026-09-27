@@ -12,6 +12,7 @@ import {
   Heading,
 } from "@/widgets/auth-panel/ui/AuthPanel";
 import { EmailAuthForm } from "@/features/email-auth/ui/EmailAuthForm";
+import { useServiceStatus } from "@/features/email-auth/model/queries";
 import { SsoOptions } from "@/features/sso-auth/ui/SsoOptions";
 import { AuthSkeleton } from "@/shared/ui/Skeleton";
 import { routes } from "@/shared/config/routes";
@@ -47,11 +48,19 @@ export function AuthPage({ mode }: AuthPageProps) {
   const [booting, setBooting] = useState(true);
   const [switching, setSwitching] = useState(false);
   const isRegister = mode === "register";
+  const { data: status } = useServiceStatus();
+  const registrationEnabled = status?.register_enabled;
 
   useEffect(() => {
     const timer = window.setTimeout(() => setBooting(false), 520);
     return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (registrationEnabled === false && isRegister) {
+      navigate(routes.login, { replace: true });
+    }
+  }, [registrationEnabled, isRegister, navigate]);
 
   const switchMode = (
     event: React.MouseEvent<HTMLAnchorElement>,
@@ -121,7 +130,7 @@ export function AuthPage({ mode }: AuthPageProps) {
                       Sign in
                     </Link>
                   </>
-                ) : (
+                ) : registrationEnabled ? (
                   <>
                     New to MetaWeave?{" "}
                     <Link
@@ -131,7 +140,7 @@ export function AuthPage({ mode }: AuthPageProps) {
                       Create an account
                     </Link>
                   </>
-                )}
+                ) : null}
               </FooterNote>
             </AuthContent>
           )}

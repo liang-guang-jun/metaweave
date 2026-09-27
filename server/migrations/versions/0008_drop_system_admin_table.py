@@ -30,9 +30,7 @@ def downgrade() -> None:
         sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("user_id", sa.String(36), nullable=False),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column(
-            "role", sa.String(32), nullable=False, server_default="SUPER_ADMIN"
-        ),
+        sa.Column("role", sa.String(32), nullable=False, server_default="SUPER_ADMIN"),
         sa.Column("version", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("user_id", name="uq_iam_system_admin_user"),

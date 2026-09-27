@@ -1,0 +1,12 @@
+# Databricks Apps runtime configuration.
+#
+# The build runs `uv sync` (pyproject.toml and uv.lock are present), which
+# installs the `mw` entry point, and the runtime injects DATABRICKS_APP_PORT.
+# 8000 is the runtime default; update --port here if the workspace overrides it.
+#
+# `--upgrade-db` applies Alembic migrations to the very database this server
+# serves from (through its own engine) before the process accepts traffic. It is
+# idempotent, so every start is safe. `command` is an exec-style argv list, so
+# this is the supported way to run `mw db upgrade` at boot: a second command in
+# the list would be passed to `mw` as arguments.
+command: ["uv", "run", "mw", "server", "--upgrade-db", "--host", "0.0.0.0", "--port", "8000"]

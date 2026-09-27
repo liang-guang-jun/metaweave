@@ -5,6 +5,7 @@ import pytest
 from server.iam.domain import (
     ACL_POLICY_MATRIX,
     AccessControlEntry,
+    AccessDecision,
     AccessDecisionEvaluator,
     AclScope,
     Action,
@@ -40,9 +41,7 @@ def test_group_nesting_guard_rejects_transitive_cycle() -> None:
 
 
 def test_acl_entry_keeps_explicit_deny_effect() -> None:
-    entry = AccessControlEntry(
-        Subject(UserId(uuid4())), Action("READ"), Effect.DENY
-    )
+    entry = AccessControlEntry(Subject(UserId(uuid4())), Action("READ"), Effect.DENY)
     assert entry.action.value == "read"
     assert entry.effect is Effect.DENY
 
@@ -54,9 +53,18 @@ def test_iam_relationship_types_map_to_stable_acl_actions() -> None:
     assert Action.UPDATE.value == "update"
     assert Action.DELETE.value == "delete"
     assert Action.MANAGE.value == "manage"
-    assert action_for_role(SystemAdminRole.SUPER_ADMIN).value == RoleAction.SYSTEM_SUPER_ADMIN.value
-    assert action_for_role(TenantMembershipType.ADMIN).value == RoleAction.TENANT_ADMIN.value
-    assert action_for_role(TenantMembershipType.OWNER).value == RoleAction.TENANT_OWNER.value
+    assert (
+        action_for_role(SystemAdminRole.SUPER_ADMIN).value
+        == RoleAction.SYSTEM_SUPER_ADMIN.value
+    )
+    assert (
+        action_for_role(TenantMembershipType.ADMIN).value
+        == RoleAction.TENANT_ADMIN.value
+    )
+    assert (
+        action_for_role(TenantMembershipType.OWNER).value
+        == RoleAction.TENANT_OWNER.value
+    )
     assert action_for_role(GroupMemberType.OWNER).value == RoleAction.GROUP_OWNER.value
 
 
@@ -71,7 +79,7 @@ def _evaluate(
     *,
     extra_subjects: set[Subject] | None = None,
     active: bool = True,
-):
+) -> AccessDecision:
     evaluator = AccessDecisionEvaluator()
     resource_type = "group" if role.value.startswith("group.") else "tenant"
     scope = AclScope(TenantId(uuid4()), resource_type, "resource-1")
@@ -80,7 +88,14 @@ def _evaluate(
         subject=subject,
         action=action,
         resource_scope=scope,
-        resource_entries=[_role_entry(subject if role is not IAMRole.GROUP_GROUP_MEMBER else next(iter(extra_subjects or {subject})), role)],
+        resource_entries=[
+            _role_entry(
+                subject
+                if role is not IAMRole.GROUP_GROUP_MEMBER
+                else next(iter(extra_subjects or {subject})),
+                role,
+            )
+        ],
         type_entries=[],
         membership_active=active,
         subjects=subjects,
@@ -92,21 +107,27 @@ def test_tenant_roles_follow_policy_matrix() -> None:
     assert not _evaluate(subject, IAMRole.TENANT_MEMBER, Action.UPDATE).permit
     assert _evaluate(subject, IAMRole.TENANT_ADMIN, Action.UPDATE).permit
     assert _evaluate(subject, IAMRole.TENANT_OWNER, Action.MANAGE).permit
-    assert ACL_POLICY_MATRIX[(ResourceType.TENANT, IAMRole.TENANT_MEMBER)] == frozenset({Action.READ})
+    assert ACL_POLICY_MATRIX[(ResourceType.TENANT, IAMRole.TENANT_MEMBER)] == frozenset(
+        {Action.READ}
+    )
 
 
 def test_group_user_and_nested_group_members_are_distinct() -> None:
     user = Subject(UserId(uuid4()))
     nested_group = Subject(GroupId(uuid4()), SubjectType.GROUP)
-    assert _evaluate(user, IAMRole.GROUP_USER_MEMBER, Action.READ).permit
-    assert not _evaluate(user, IAMRole.GROUP_USER_MEMBER, Action.UPDATE).permit
+    # Both roles are declared as the plain enum, so the identity check below
+    # compares two values of one type instead of two disjoint literals.
+    direct_member: IAMRole = IAMRole.GROUP_USER_MEMBER
+    nested_member: IAMRole = IAMRole.GROUP_GROUP_MEMBER
+    assert _evaluate(user, direct_member, Action.READ).permit
+    assert not _evaluate(user, direct_member, Action.UPDATE).permit
     assert _evaluate(
         user,
-        IAMRole.GROUP_GROUP_MEMBER,
+        nested_member,
         Action.READ,
         extra_subjects={nested_group},
     ).permit
-    assert IAMRole.GROUP_USER_MEMBER is not IAMRole.GROUP_GROUP_MEMBER
+    assert direct_member is not nested_member
 
 
 def test_group_owner_and_system_super_admin_bypass() -> None:

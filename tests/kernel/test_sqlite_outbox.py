@@ -17,10 +17,12 @@ from server.kernel.infrastructure.messaging import (
 from server.kernel.infrastructure.persistence.sqlalchemy import (
     SqlAlchemyUnitOfWork,
     create_async_engine,
-    create_kernel_schema,
     create_session_factory,
 )
-from server.kernel.infrastructure.persistence.sqlalchemy.models import OutboxRecord
+from server.kernel.infrastructure.persistence.sqlalchemy.models import (
+    Base,
+    OutboxRecord,
+)
 from server.kernel.infrastructure.projection import claim_projection_event
 
 
@@ -33,7 +35,8 @@ async def _new_uow_factory() -> tuple[AsyncEngine, Callable[[], SqlAlchemyUnitOf
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:", sqlite_busy_timeout_ms=5000
     )
-    await create_kernel_schema(engine)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
     return engine, lambda: SqlAlchemyUnitOfWork(create_session_factory(engine))
 
 

@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { PrimaryButton } from "@/shared/ui/Button";
 import { Field } from "@/shared/ui/Field";
-import { emailAuthSchema, registerSchema } from "@/shared/lib/validation";
+import { createRegisterSchema, loginSchema } from "@/shared/lib/validation";
 import type { AuthPageMode } from "../model/types";
 import { getApiError, loginUser, registerUser } from "../model/api";
+import { useServiceStatus } from "../model/queries";
 import styled, { keyframes } from "styled-components";
 
 const enter = keyframes`from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); }`;
@@ -26,10 +27,18 @@ export function EmailAuthForm({
 }: EmailAuthFormProps) {
   const [loading, setLoading] = useState(false);
   const isRegister = mode === "register";
+  const { data: status } = useServiceStatus();
+  // The backend owns the password policy; build the schema from what it reports
+  // so a rejected password is described before the request is sent.
+  const registerSchema = useMemo(
+    () => (status ? createRegisterSchema(status.password_policy) : undefined),
+    [status],
+  );
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const schema = isRegister ? registerSchema : emailAuthSchema;
+    const schema = isRegister ? registerSchema : loginSchema;
+    if (!schema) return;
     const result = schema.safeParse(
       Object.fromEntries(new FormData(event.currentTarget)),
     );
@@ -48,7 +57,9 @@ export function EmailAuthForm({
       .then(() => {
         if (isRegister)
           toast.success(
-            "Account created. Verification is required before sign-in.",
+            status?.register_skip_verify
+              ? "Account created. You can sign in now."
+              : "Account created. Verification is required before sign-in.",
           );
         onSuccess(mode);
       })
@@ -91,7 +102,10 @@ export function EmailAuthForm({
           <span>Confirm password</span>
         </Field>
       )}
-      <PrimaryButton disabled={loading} type="submit">
+      <PrimaryButton
+        disabled={loading || (isRegister && !registerSchema)}
+        type="submit"
+      >
         {loading ? "Continuing…" : isRegister ? "Create account" : "Sign in"}
       </PrimaryButton>
     </Form>

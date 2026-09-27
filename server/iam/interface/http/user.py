@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from ...application.messages import (
@@ -17,8 +17,10 @@ from ...application.messages import (
     VerifyUser,
 )
 from ...domain.value_objects import Subject, SubjectType, UserId
+from ....app.bootstrap.container import Container
 from ....app.http.dependencies import (
     AuthenticatedPrincipal,
+    get_container,
     get_current_principal,
     get_authenticated_identity,
     get_message_bus,
@@ -93,9 +95,22 @@ async def search_users(
 async def register_user(
     request: RegisterUserRequest,
     bus: Annotated[MessageBus, Depends(get_message_bus)],
+    container: Annotated[Container, Depends(get_container)],
 ) -> UserResponse:
-    """Register a user account."""
-    result = await bus.send(RegisterUser(str(request.email), request.password))
+    """Register a user account when self-service registration is enabled."""
+    register = container.config().registration
+    if not register.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="self-service registration is disabled",
+        )
+    result = await bus.send(
+        RegisterUser(
+            str(request.email),
+            request.password,
+            skip_verify=register.email.skip_verify,
+        )
+    )
     return UserResponse(user_id=result.value)
 
 

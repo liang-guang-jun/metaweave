@@ -17,6 +17,8 @@ from .dto import *
 class RegisterUser(Command[UserId]):
     email: str
     password: str
+    #: Mark the account verified on creation, skipping the email workflow.
+    skip_verify: bool = False
 
 
 @dataclass(frozen=True, slots=True)

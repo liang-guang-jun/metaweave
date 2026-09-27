@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from ...iam.domain.value_objects import Action, Effect, Subject, TenantId, UserId
-from ..domain.value_objects import NodeId, NodeType, WorkspaceId, WorkspaceMembershipId, WorkspaceRole
+from ..domain.value_objects import (
+    NodeId,
+    NodeType,
+    WorkspaceId,
+    WorkspaceMembershipId,
+    WorkspaceRole,
+)
 
 
 @dataclass(frozen=True, slots=True)

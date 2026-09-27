@@ -13,6 +13,8 @@ wheels/
 .pytest_cache/
 .coverage
 .cache/
+.env*
+node_modules
 
 # SQLite Files
 

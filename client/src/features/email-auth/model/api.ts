@@ -1,6 +1,7 @@
 import axios from "axios";
 import { api } from "@/shared/api/client";
-import { setAccessToken } from "@/shared/lib/auth";
+import { setAccessToken, setTokenHeader } from "@/shared/lib/auth";
+import type { PasswordPolicy } from "@/shared/lib/validation";
 
 type TokenResponse = {
   access_token: string;
@@ -9,6 +10,24 @@ type TokenResponse = {
 };
 
 type RegisterResponse = { user_id: string };
+
+/** Client-visible service configuration served by `/healthz`. */
+export type ServiceStatus = {
+  register_enabled: boolean;
+  register_skip_verify: boolean;
+  token_header: string;
+  password_policy: PasswordPolicy;
+};
+
+type HealthzResponse = ServiceStatus & { status: string };
+
+/** Read registration availability, the token header and the password policy. */
+export async function getServiceStatus(): Promise<ServiceStatus> {
+  const response = await api.get<HealthzResponse>("/healthz");
+  // Remember where the API expects the token before any authenticated call.
+  setTokenHeader(response.data.token_header);
+  return response.data;
+}
 
 export function getApiError(error: unknown, fallback: string) {
   if (axios.isAxiosError(error)) {

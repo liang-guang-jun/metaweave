@@ -8,8 +8,20 @@ from dataclasses import dataclass, field
 from ...iam.domain.value_objects import Action, Effect, Subject, TenantId, UserId
 from ...kernel.application.common.page import Page, PageRequest
 from ...kernel.application.messaging.message import Command, Query
-from ..domain.value_objects import NodeId, NodeType, WorkspaceId, WorkspaceMembershipId, WorkspaceRole
-from .dto import NodeDTO, NodePage, NodePermissionDTO, WorkspaceDTO, WorkspaceMembershipDTO
+from ..domain.value_objects import (
+    NodeId,
+    NodeType,
+    WorkspaceId,
+    WorkspaceMembershipId,
+    WorkspaceRole,
+)
+from .dto import (
+    NodeDTO,
+    NodePage,
+    NodePermissionDTO,
+    WorkspaceDTO,
+    WorkspaceMembershipDTO,
+)
 
 
 @dataclass(frozen=True, slots=True)

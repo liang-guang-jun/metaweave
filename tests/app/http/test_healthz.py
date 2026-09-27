@@ -24,7 +24,18 @@ def test_healthz_reads_the_container_from_app_state(
         )
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {
+        "status": "ok",
+        "register_enabled": True,
+        "register_skip_verify": True,
+        "token_header": "X-Bearer-Token",
+        "password_policy": {
+            "min_length": 12,
+            "require_upper": True,
+            "require_digit": True,
+            "require_symbol": True,
+        },
+    }
     output = capsys.readouterr().out
     assert "http.request.started" in output
     assert "http.request.finished" in output

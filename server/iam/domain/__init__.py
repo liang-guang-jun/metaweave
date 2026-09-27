@@ -17,6 +17,7 @@ from .entities import (
 from .errors import IamDomainError
 from .events import *
 from .services import (
+    AccessDecision,
     AccessDecisionEvaluator,
     AclMergeService,
     LastAdminGuard,
@@ -31,6 +32,7 @@ __all__ = [
     "SYSTEM_TENANT_ID",
     "AccessControlEntry",
     "AccessControlList",
+    "AccessDecision",
     "AccessDecisionEvaluator",
     "AclId",
     "AclMergeService",

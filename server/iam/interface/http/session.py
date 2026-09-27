@@ -65,11 +65,11 @@ async def list_available_tenants(
             UserId(principal.user_id), keyword, PageRequest(page, size)
         )
     )
-    if result is None:
-        result = TenantOptionPage(items=[], total=0, page=page, size=size, pages=0, has_next=False)
-        return result
     return TenantOptionPage(
-        items=[TenantOption(tenant_id=item.tenant_id.value, name=item.name) for item in result.items],
+        items=[
+            TenantOption(tenant_id=item.tenant_id.value, name=item.name)
+            for item in result.items
+        ],
         total=result.total,
         page=result.page,
         size=result.size,

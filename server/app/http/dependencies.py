@@ -24,7 +24,9 @@ from ...kernel.application.context import (
 from ...kernel.application.messaging.bus import MessageBus
 from ..bootstrap.container import Container
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/iam/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/iam/auth/token", auto_error=False)
+
+_BEARER_PREFIX = "bearer "
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +60,32 @@ def _invalid_token() -> HTTPException:
     )
 
 
+def _missing_token(header_name: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=f"Not authenticated: send the token in {header_name}",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def _access_token(
+    request: Request,
+    bearer: str | None = Depends(oauth2_scheme),
+) -> str:
+    """Return the access token from the configured header or ``Authorization``.
+
+    ``token.header`` (``X-Bearer-Token`` by default) wins over the standard
+    header, whose value a hosting platform proxy may replace with its own token.
+    """
+    header_name = get_container(request).config().token.header
+    token = request.headers.get(header_name) or bearer
+    if token and token.lower().startswith(_BEARER_PREFIX):
+        token = token[len(_BEARER_PREFIX) :]
+    if not token:
+        raise _missing_token(header_name)
+    return token
+
+
 def _decode_token(token: str, container: Container) -> AuthenticatedPrincipal:
     config = container.config()
     try:
@@ -70,9 +98,15 @@ def _decode_token(token: str, container: Container) -> AuthenticatedPrincipal:
         )
         return AuthenticatedPrincipal(
             user_id=UUID(str(payload["sub"])),
-            tenant_id=UUID(str(payload["tenant_id"])) if payload.get("tenant_id") else None,
-            membership_id=UUID(str(payload["membership_id"])) if payload.get("membership_id") else None,
-            session_id=UUID(str(payload["session_id"])) if payload.get("session_id") else None,
+            tenant_id=UUID(str(payload["tenant_id"]))
+            if payload.get("tenant_id")
+            else None,
+            membership_id=UUID(str(payload["membership_id"]))
+            if payload.get("membership_id")
+            else None,
+            session_id=UUID(str(payload["session_id"]))
+            if payload.get("session_id")
+            else None,
             auth_method=str(payload["auth_method"]),
         )
     except (KeyError, TypeError, ValueError, jwt.PyJWTError) as error:
@@ -104,7 +138,7 @@ def _principal_context(
 
 async def get_current_principal(
     request: Request,
-    token: str = Depends(oauth2_scheme),
+    token: str = Depends(_access_token),
     selected_tenant_id: UUID | None = Header(default=None, alias="X-Tenant-ID"),  # noqa: B008
 ) -> AsyncGenerator[AuthenticatedPrincipal]:
     """Decode bearer identity and bind the explicitly selected tenant context."""
@@ -127,7 +161,7 @@ async def get_current_principal(
 
 async def get_authenticated_identity(
     request: Request,
-    token: str = Depends(oauth2_scheme),
+    token: str = Depends(_access_token),
 ) -> AuthenticatedPrincipal:
     """Resolve an identity-only or tenant-bound bearer token."""
     container = get_container(request)

@@ -1,16 +1,23 @@
 import axios from "axios";
 import { storageKeys } from "@/shared/config/storage";
 import { routes } from "@/shared/config/routes";
-import { clearAccessToken, getAccessToken } from "@/shared/lib/auth";
+import {
+  clearAccessToken,
+  getAccessToken,
+  getTokenHeader,
+} from "@/shared/lib/auth";
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000",
+  // Same-origin by default: the production bundle is served by FastAPI itself,
+  // so the API shares the host that served the page. `pnpm dev` points the
+  // absolute backend URL at the dev server through .env.development.
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api/v1",
   headers: { Accept: "application/json" },
 });
 
 api.interceptors.request.use((config) => {
   const token = getAccessToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token) config.headers[getTokenHeader()] = token;
   const tenantId = window.localStorage.getItem(storageKeys.activeTenantId);
   const requestedTenantId =
     config.headers["X-Tenant-ID"] ?? config.headers["x-tenant-id"];

@@ -60,14 +60,3 @@ def create_session_factory(
 ) -> async_sessionmaker[AsyncSession]:
     """Create non-expiring sessions appropriate for aggregate reconstitution."""
     return async_sessionmaker(engine, expire_on_commit=False)
-
-
-async def create_kernel_schema(engine: AsyncEngine) -> None:
-    """Create kernel tables for local development and integration tests.
-
-    Production deployments should execute the equivalent Alembic migration.
-    """
-    from .models import Base
-
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)

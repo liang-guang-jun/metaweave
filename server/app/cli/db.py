@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -10,11 +11,17 @@ from typing import Annotated
 import typer
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from ..bootstrap.config import repository_root
 
 app = typer.Typer(help="Manage database schema migrations.", no_args_is_help=True)
 
 _MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
-_DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///metaweave.db"
+# Anchored to the repository root so migrations touch one canonical database
+# regardless of the working directory the command runs from.
+_DEFAULT_DATABASE_URL = f"sqlite+aiosqlite:///{repository_root() / 'metaweave.db'}"
 _REVISION_PATTERN = re.compile(r"^(?P<number>\d{4})(?:_|$)")
 
 DatabaseUrl = Annotated[
@@ -34,6 +41,29 @@ def alembic_config(database_url: str | None = None) -> Config:
     resolved_url = database_url or os.getenv("MW_DATABASE_URL") or _DEFAULT_DATABASE_URL
     config.set_main_option("sqlalchemy.url", resolved_url)
     return config
+
+
+def apply_migrations(engine: AsyncEngine, revision: str = "head") -> None:
+    """Apply migrations through an engine the caller already owns.
+
+    Alembic otherwise opens its own connection, which never works for an
+    in-memory SQLite database: it only exists for the process and pool that
+    created it. Injecting the engine keeps the schema and the runtime traffic on
+    one database. Synchronous callers such as the CLI use this helper.
+    """
+
+    async def run() -> None:
+        async with engine.connect() as connection:
+            await connection.run_sync(_upgrade_on_connection, revision)
+
+    asyncio.run(run())
+
+
+def _upgrade_on_connection(connection: Connection, revision: str) -> None:
+    """Run an upgrade on a synchronous connection facade."""
+    config = alembic_config()
+    config.attributes["connection"] = connection
+    command.upgrade(config, revision)
 
 
 def next_revision_id(versions_dir: Path | None = None) -> str:

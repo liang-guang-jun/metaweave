@@ -9,7 +9,11 @@ from pydantic import BaseModel
 from ...application.messages import CreateWorkspace, GetWorkspace, ListWorkspaces
 from ...domain.value_objects import WorkspaceId
 from ....iam.domain.value_objects import TenantId
-from ....app.http.dependencies import AuthenticatedPrincipal, get_current_principal, get_message_bus
+from ....app.http.dependencies import (
+    AuthenticatedPrincipal,
+    get_current_principal,
+    get_message_bus,
+)
 from ....kernel.application.common.page import PageRequest
 from ....kernel.application.messaging.bus import MessageBus
 
@@ -47,11 +51,22 @@ async def create_workspace(
     tenant_id = principal.tenant_id
     if tenant_id is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="tenant context required")
-    workspace_id = await bus.send(CreateWorkspace(TenantId(tenant_id), request.display_name, request.description))
-    result = await bus.ask(GetWorkspace(TenantId(tenant_id), WorkspaceId(workspace_id.value)))
+    workspace_id = await bus.send(
+        CreateWorkspace(TenantId(tenant_id), request.display_name, request.description)
+    )
+    result = await bus.ask(
+        GetWorkspace(TenantId(tenant_id), WorkspaceId(workspace_id.value))
+    )
     assert result is not None
-    return WorkspaceResponse(workspace_id=result.workspace_id.value, tenant_id=result.tenant_id.value, display_name=result.display_name, description=result.description, active=result.active)
+    return WorkspaceResponse(
+        workspace_id=result.workspace_id.value,
+        tenant_id=result.tenant_id.value,
+        display_name=result.display_name,
+        description=result.description,
+        active=result.active,
+    )
 
 
 @router.get("", response_model=WorkspacePageResponse)
@@ -63,10 +78,26 @@ async def list_workspaces(
     size: int = Query(default=20, ge=1, le=100),
 ) -> WorkspacePageResponse:
     from fastapi import HTTPException
+
     if principal.tenant_id is None:
         raise HTTPException(status_code=400, detail="tenant context required")
-    result = await bus.ask(ListWorkspaces(TenantId(principal.tenant_id), keyword, PageRequest(page, size)))
+    result = await bus.ask(
+        ListWorkspaces(TenantId(principal.tenant_id), keyword, PageRequest(page, size))
+    )
     return WorkspacePageResponse(
-        items=[WorkspaceResponse(workspace_id=x.workspace_id.value, tenant_id=x.tenant_id.value, display_name=x.display_name, description=x.description, active=x.active) for x in result.items],
-        total=result.total, page=result.page, size=result.size, pages=result.pages, has_next=result.has_next,
+        items=[
+            WorkspaceResponse(
+                workspace_id=x.workspace_id.value,
+                tenant_id=x.tenant_id.value,
+                display_name=x.display_name,
+                description=x.description,
+                active=x.active,
+            )
+            for x in result.items
+        ],
+        total=result.total,
+        page=result.page,
+        size=result.size,
+        pages=result.pages,
+        has_next=result.has_next,
     )

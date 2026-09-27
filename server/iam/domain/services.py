@@ -32,8 +32,12 @@ class AclMergeService:
             result[(entry.subject, entry.action)] = entry
         for entry in resource_entries:
             result[(entry.subject, entry.action)] = entry
-        type_by_key: dict[tuple[Subject, Action | IAMRole], list[AccessControlEntry]] = {}
-        resource_by_key: dict[tuple[Subject, Action | IAMRole], list[AccessControlEntry]] = {}
+        type_by_key: dict[
+            tuple[Subject, Action | IAMRole], list[AccessControlEntry]
+        ] = {}
+        resource_by_key: dict[
+            tuple[Subject, Action | IAMRole], list[AccessControlEntry]
+        ] = {}
         for entry in type_entries:
             type_by_key.setdefault((entry.subject, entry.action), []).append(entry)
         for entry in resource_entries:
@@ -141,7 +145,9 @@ class AccessDecisionEvaluator:
         # within the same scope.
         matching = resource_matching or type_matching
         if not matching:
-            if action in actions_for_roles(resource_scope.resource_type, relationship_roles):
+            if action in actions_for_roles(
+                resource_scope.resource_type, relationship_roles
+            ):
                 return AccessDecision(True, "role_policy", resource_scope)
             return AccessDecision(False, "no_matching_rule")
         entry = next(

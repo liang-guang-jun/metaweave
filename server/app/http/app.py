@@ -16,6 +16,7 @@ from ...iam.interface.http import router as iam_router
 from ...kernel.infrastructure.logging import get_logger
 from ..bootstrap.container import Container
 from ..bootstrap.factory import create_factory
+from .frontend import mount_frontend
 from .middleware import HttpLoggingMiddleware
 from .routers.healthz import router as healthz_router
 
@@ -41,13 +42,8 @@ def create_app(container: Container | None = None) -> FastAPI:
     app = FastAPI(title=config.app.name, debug=config.app.debug, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:4173",
-            "http://127.0.0.1:4173",
-        ],
-        allow_credentials=True,
+        allow_origins=list(config.cors.allow_origins),
+        allow_credentials=config.cors.allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -73,7 +69,9 @@ def create_app(container: Container | None = None) -> FastAPI:
 
     app.state.container = resolved_container
     app.add_middleware(HttpLoggingMiddleware, config=config.logging)
-    app.include_router(healthz_router)
-    app.include_router(iam_router)
-    app.include_router(catalog_router)
+    api_prefix = config.api.prefix
+    app.include_router(healthz_router, prefix=api_prefix)
+    app.include_router(iam_router, prefix=api_prefix)
+    app.include_router(catalog_router, prefix=api_prefix)
+    mount_frontend(app, config)
     return app

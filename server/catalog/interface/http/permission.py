@@ -6,13 +6,31 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 
-from ...application.messages import GrantNodeAccess, GetNodePermissions, RevokeNodeAccess
+from ...application.messages import (
+    GrantNodeAccess,
+    GetNodePermissions,
+    RevokeNodeAccess,
+)
 from ...domain.value_objects import NodeId, WorkspaceId
-from ....app.http.dependencies import AuthenticatedPrincipal, get_current_principal, get_message_bus
-from ....iam.domain.value_objects import Action, Effect, Subject, TenantId, SubjectType, UserId
+from ....app.http.dependencies import (
+    AuthenticatedPrincipal,
+    get_current_principal,
+    get_message_bus,
+)
+from ....iam.domain.value_objects import (
+    Action,
+    Effect,
+    Subject,
+    TenantId,
+    SubjectType,
+    UserId,
+)
 from ....kernel.application.messaging.bus import MessageBus
 
-router = APIRouter(prefix="/workspaces/{workspace_id}/nodes/{node_id}/permissions", tags=["catalog.permissions"])
+router = APIRouter(
+    prefix="/workspaces/{workspace_id}/nodes/{node_id}/permissions",
+    tags=["catalog.permissions"],
+)
 
 
 class PermissionRequest(BaseModel):
@@ -39,9 +57,24 @@ async def get_permissions(
 ) -> list[PermissionResponse]:
     if principal.tenant_id is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="tenant context required")
-    result = await bus.ask(GetNodePermissions(TenantId(principal.tenant_id), WorkspaceId(workspace_id), NodeId(node_id)))
-    return [PermissionResponse(subject_id=x.subject.subject_id.value, action=x.action.value, effect=x.effect, resource_type=x.scope_resource_type, resource_id=x.scope_resource_id, inherited=x.inherited) for x in result.permissions]
+    result = await bus.ask(
+        GetNodePermissions(
+            TenantId(principal.tenant_id), WorkspaceId(workspace_id), NodeId(node_id)
+        )
+    )
+    return [
+        PermissionResponse(
+            subject_id=x.subject.subject_id.value,
+            action=x.action.value,
+            effect=x.effect,
+            resource_type=x.scope_resource_type,
+            resource_id=x.scope_resource_id,
+            inherited=x.inherited,
+        )
+        for x in result.permissions
+    ]
 
 
 @router.post("", status_code=status.HTTP_204_NO_CONTENT)
@@ -54,8 +87,18 @@ async def grant_permission(
 ) -> None:
     if principal.tenant_id is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="tenant context required")
-    await bus.send(GrantNodeAccess(TenantId(principal.tenant_id), WorkspaceId(workspace_id), NodeId(node_id), Subject(UserId(request.user_id), SubjectType.USER), Action(request.action), request.effect))
+    await bus.send(
+        GrantNodeAccess(
+            TenantId(principal.tenant_id),
+            WorkspaceId(workspace_id),
+            NodeId(node_id),
+            Subject(UserId(request.user_id), SubjectType.USER),
+            Action(request.action),
+            request.effect,
+        )
+    )
 
 
 @router.delete("/{user_id}/{action}", status_code=status.HTTP_204_NO_CONTENT)
@@ -69,5 +112,14 @@ async def revoke_permission(
 ) -> None:
     if principal.tenant_id is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="tenant context required")
-    await bus.send(RevokeNodeAccess(TenantId(principal.tenant_id), WorkspaceId(workspace_id), NodeId(node_id), Subject(UserId(user_id), SubjectType.USER), Action(action)))
+    await bus.send(
+        RevokeNodeAccess(
+            TenantId(principal.tenant_id),
+            WorkspaceId(workspace_id),
+            NodeId(node_id),
+            Subject(UserId(user_id), SubjectType.USER),
+            Action(action),
+        )
+    )

@@ -14,7 +14,9 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "iam_tenant_memberships",
-        sa.Column("membership_type", sa.String(16), nullable=False, server_default="MEMBER"),
+        sa.Column(
+            "membership_type", sa.String(16), nullable=False, server_default="MEMBER"
+        ),
     )
     op.execute(
         "UPDATE iam_tenant_memberships SET membership_type = "

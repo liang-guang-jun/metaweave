@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from ...kernel.domain.event import DomainEvent
-from .value_objects import NodeId, NodeType, WorkspaceId, WorkspaceMembershipId, WorkspaceRole
+from .value_objects import (
+    NodeId,
+    NodeType,
+    WorkspaceId,
+    WorkspaceMembershipId,
+    WorkspaceRole,
+)
 
 
 @dataclass(frozen=True, slots=True)
