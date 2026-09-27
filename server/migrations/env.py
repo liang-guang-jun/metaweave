@@ -10,6 +10,8 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import server.catalog.infrastructure.persistence.sqlalchemy.models
+import server.iam.infrastructure.persistence.sqlalchemy.models  # noqa: F401
 from server.kernel.infrastructure.persistence.sqlalchemy.models import Base
 
 config = context.config

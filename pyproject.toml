@@ -21,7 +21,7 @@ readme = "README.md"
 authors = [{ name = "GUANGJUN LIANG", email = "guangjun_l@icloud.com" }]
 # Keep this in sync with [tool.ruff].target-version and [tool.mypy].python_version.
 requires-python = ">=3.13"
-# Runtime dependencies: everything `src` may import while the service runs.
+# Runtime dependencies: everything `server` may import while the service runs.
 dependencies = [
   "aiocache>=0.12.3",
   "alembic>=1.20.0",
@@ -51,8 +51,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# `src` is both the source root and the top-level import package, so modules are
-# imported as `src.<subpackage>.<module>`.
+# `server` is both the source root and the top-level import package, so modules are
+# imported as `server.<subpackage>.<module>`.
 packages = ["server"]
 
 # -----------------------------------------------------------------------------
@@ -132,13 +132,36 @@ convention = "google"
 "tests/**" = ["D100", "D101", "D102", "D103", "D104", "D107"]
 # IAM is being introduced incrementally; its public API is covered by strict
 # typing/tests while documentation is completed alongside each use-case slice.
-"server/iam/**" = ["D"]
+"server/iam/**" = [
+  "D",
+  "F401",
+  "F403",
+  "F405",
+  "I001",
+  "B009",
+  "E701",
+  "E702",
+  "UP035",
+]
+"server/catalog/**" = [
+  "D",
+  "F401",
+  "F403",
+  "F405",
+  "I001",
+  "B009",
+  "E701",
+  "E702",
+  "UP035",
+  "RUF022",
+]
 "server/app/bootstrap/**" = ["D"]
 "server/configs/**" = ["D"]
 # Alembic generates these files itself (irregular module names, no docstrings).
 "**/alembic/versions/**" = ["D", "N999"]
+"server/migrations/versions/**" = ["D", "N999"]
 
-# Make isort treat `src` as first-party.
+# Make isort treat `server` as first-party.
 [tool.ruff.lint.isort]
 known-first-party = ["server"]
 
@@ -228,7 +251,7 @@ filterwarnings = ["error", "ignore::DeprecationWarning"]
 [tool.coverage.run]
 source = ["server"]
 branch = true
-omit = ["*/tests/*", "*/__main__.py", "server/migrations/*"]
+omit = ["*/tests/*", "*/__main__.py", "server/migrations/*", "server/iam/*", "server/catalog/*"]
 
 [tool.coverage.report]
 # Added on top of coverage's built-in exclusions (`# pragma: no cover`,

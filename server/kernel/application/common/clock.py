@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 
+# todo: 移动到infrastructure/common
 class Clock:
     """Provides the current time."""
 

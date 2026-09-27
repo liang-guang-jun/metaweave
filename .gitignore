@@ -18,6 +18,8 @@ wheels/
 
 *.sqlite
 *.db
+*.db-shm
+*.db-wal
 
 # Configurations
 server/config/*

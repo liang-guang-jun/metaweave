@@ -71,6 +71,44 @@ class AppInfoConfig(StrictConfig):
     debug: bool = False
 
 
+class PasswordPolicyConfig(StrictConfig):
+    """IAM password policy."""
+
+    min_length: PositiveInt = 12
+    require_upper: bool = True
+    require_digit: bool = True
+    require_symbol: bool = True
+    max_failures: PositiveInt = 5
+    lockout_seconds: PositiveInt = 300
+
+
+class TokenConfig(StrictConfig):
+    """IAM access-token settings."""
+
+    issuer: str = "iam"
+    audience: str = "business-api"
+    secret: str = "development-only-change-me"
+    access_ttl_seconds: PositiveInt = 3600
+    refresh_ttl_seconds: PositiveInt = 2592000
+
+
+class OidcConfig(StrictConfig):
+    """OIDC verification settings."""
+
+    issuer: str = ""
+    audience: str = ""
+    client_id: str = ""
+
+
+class AclConfig(StrictConfig):
+    """ACL limits and cache settings."""
+
+    max_entries: PositiveInt = 1000
+    max_user_grants: PositiveInt = 10000
+    cache_enabled: bool = False
+    cache_ttl_seconds: PositiveInt = 30
+
+
 class AppConfig(StrictConfig):
     """Complete, validated configuration assembled from YAML overlays."""
 
@@ -79,6 +117,10 @@ class AppConfig(StrictConfig):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    password_policy: PasswordPolicyConfig = Field(default_factory=PasswordPolicyConfig)
+    token: TokenConfig = Field(default_factory=TokenConfig)
+    oidc: OidcConfig = Field(default_factory=OidcConfig)
+    acl: AclConfig = Field(default_factory=AclConfig)
 
 
 def default_config_dir() -> Path:

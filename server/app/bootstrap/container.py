@@ -5,8 +5,10 @@ from __future__ import annotations
 from dependency_injector import containers, providers
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from ...kernel.application.event.publisher import EventPublisher
 from ...kernel.application.messaging.bus import MessageBus
 from ...kernel.application.messaging.registry import BehaviorRegistry, HandlerRegistry
+from ...kernel.infrastructure.messaging.dispatcher import OutboxDispatcher
 from .config import AppConfig
 
 
@@ -23,3 +25,5 @@ class Container(containers.DeclarativeContainer):
         handlers=handlers,
         behaviors=behaviors,
     )
+    publisher = providers.Singleton(EventPublisher)
+    dispatcher = providers.Singleton(OutboxDispatcher)

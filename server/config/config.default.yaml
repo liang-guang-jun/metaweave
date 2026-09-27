@@ -24,6 +24,7 @@ logging:
   json: false
   colors: true
   silenced_loggers:
+  #  []
     - uvicorn
     - sqlalchemy.engine
   log_request_headers: false
@@ -32,3 +33,29 @@ server:
   host: 127.0.0.1
   port: 8000
   reload: false
+
+password_policy:
+  min_length: 8
+  require_upper: true
+  require_digit: true
+  require_symbol: true
+  max_failures: 5
+  lockout_seconds: 300
+
+token:
+  issuer: iam
+  audience: business-api
+  secret: development-only-change-me
+  access_ttl_seconds: 3600
+  refresh_ttl_seconds: 2592000
+
+oidc:
+  issuer: ""
+  audience: ""
+  client_id: ""
+
+acl:
+  max_entries: 1000
+  max_user_grants: 10000
+  cache_enabled: false
+  cache_ttl_seconds: 30

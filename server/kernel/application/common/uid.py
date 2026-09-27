@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 
+# todo: 移动到infrastructure/common
 class UID:
     """Generates new entity IDs."""
 
