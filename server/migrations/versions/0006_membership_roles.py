@@ -20,7 +20,7 @@ def upgrade() -> None:
     )
     op.execute(
         "UPDATE iam_tenant_memberships SET membership_type = "
-        "CASE WHEN is_admin = 1 THEN 'ADMIN' ELSE 'MEMBER' END"
+        "CASE WHEN is_admin = TRUE THEN 'ADMIN' ELSE 'MEMBER' END"
     )
 
 

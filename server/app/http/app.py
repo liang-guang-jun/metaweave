@@ -16,6 +16,7 @@ from ...iam.interface.http import router as iam_router
 from ...kernel.infrastructure.logging import get_logger
 from ..bootstrap.container import Container
 from ..bootstrap.factory import create_factory
+from .databricks_credentials import reset_request_credential, set_request_credential
 from .frontend import mount_frontend
 from .middleware import HttpLoggingMiddleware
 from .routers.healthz import router as healthz_router
@@ -40,10 +41,20 @@ def create_app(container: Container | None = None) -> FastAPI:
             logger.info("application.stopped", app_name=config.app.name)
 
     app = FastAPI(title=config.app.name, debug=config.app.debug, lifespan=lifespan)
+
+    @app.middleware("http")
+    async def databricks_credential_context(request: Request, call_next):
+        header = config.iam.identity.providers.databricksapps.headers.access_token
+        token = set_request_credential(request.headers.get(header))
+        try:
+            return await call_next(request)
+        finally:
+            reset_request_credential(token)
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=list(config.cors.allow_origins),
-        allow_credentials=config.cors.allow_credentials,
+        allow_origins=list(config.server.cors.allow_origins),
+        allow_credentials=config.server.cors.allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -68,8 +79,16 @@ def create_app(container: Container | None = None) -> FastAPI:
         )
 
     app.state.container = resolved_container
-    app.add_middleware(HttpLoggingMiddleware, config=config.logging)
-    api_prefix = config.api.prefix
+    app.add_middleware(
+        HttpLoggingMiddleware,
+        config=config.logging,
+        confidential_headers=(
+            config.iam.identity.providers.databricksapps.headers.access_token,
+            config.iam.token.header,
+            "Authorization",
+        ),
+    )
+    api_prefix = config.server.api.prefix
     app.include_router(healthz_router, prefix=api_prefix)
     app.include_router(iam_router, prefix=api_prefix)
     app.include_router(catalog_router, prefix=api_prefix)

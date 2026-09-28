@@ -31,34 +31,14 @@ const Separator = styled.div`
   }
 `;
 
-function MicrosoftIcon() {
-  return (
-    <svg viewBox="0 0 23 23" aria-hidden="true" width="20" height="20">
-      <path fill="#f35325" d="M1 1h10v10H1z" />
-      <path fill="#81bc06" d="M12 1h10v10H12z" />
-      <path fill="#05a6f0" d="M1 12h10v10H1z" />
-      <path fill="#ffba08" d="M12 12h10v10H12z" />
-    </svg>
-  );
-}
+type SsoOptionsProps = { onContinue: () => void; disabled?: boolean };
 
-type SsoOptionsProps = { onContinue: () => void };
-
-export function SsoOptions({ onContinue }: SsoOptionsProps) {
+export function SsoOptions({ onContinue, disabled }: SsoOptionsProps) {
   return (
     <Options>
       <Separator>OR CONTINUE WITH</Separator>
-      <ProviderButton type="button" onClick={onContinue}>
-        <img
-          className="keycloak"
-          src="https://www.keycloak.org/resources/images/logo.svg"
-          alt="Keycloak"
-        />
-        Continue with Keycloak
-      </ProviderButton>
-      <ProviderButton type="button" onClick={onContinue}>
-        <MicrosoftIcon />
-        Continue with Entra ID
+      <ProviderButton type="button" onClick={onContinue} disabled={disabled}>
+        Continue with Databricks Apps
       </ProviderButton>
     </Options>
   );

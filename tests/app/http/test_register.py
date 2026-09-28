@@ -14,7 +14,7 @@ def _client(**overrides: object) -> TestClient:
 def test_healthz_reports_registration_availability() -> None:
     with _client() as client:
         enabled = client.get("/healthz")
-    with _client(register={"enabled": False}) as client:
+    with _client(iam={"registration": {"enabled": False}}) as client:
         disabled = client.get("/healthz")
 
     assert enabled.json()["register_enabled"] is True
@@ -24,7 +24,7 @@ def test_healthz_reports_registration_availability() -> None:
 def test_healthz_mirrors_the_email_verification_setting() -> None:
     with _client() as client:
         default = client.get("/healthz")
-    with _client(register={"email": {"skip_verify": False}}) as client:
+    with _client(iam={"registration": {"email": {"skip_verify": False}}}) as client:
         verifying = client.get("/healthz")
 
     assert default.json()["register_skip_verify"] is True
@@ -33,12 +33,7 @@ def test_healthz_mirrors_the_email_verification_setting() -> None:
 
 def test_healthz_mirrors_the_configured_password_policy() -> None:
     with _client(
-        password_policy={
-            "min_length": 20,
-            "require_upper": False,
-            "require_digit": True,
-            "require_symbol": False,
-        }
+        iam={"password": {"min_length": 20, "require_upper": False, "require_digit": True, "require_symbol": False}}
     ) as client:
         response = client.get("/healthz")
 
@@ -51,7 +46,7 @@ def test_healthz_mirrors_the_configured_password_policy() -> None:
 
 
 def test_register_endpoint_is_forbidden_when_registration_is_disabled() -> None:
-    with _client(register={"enabled": False}) as client:
+    with _client(iam={"registration": {"enabled": False}}) as client:
         response = client.post(
             "/iam/users",
             json={"email": "user@example.test", "password": "Password1!"},

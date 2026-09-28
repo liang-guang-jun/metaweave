@@ -160,10 +160,16 @@ class RestoreGroupMember(Command[None]):
 
 @dataclass(frozen=True, slots=True)
 class ConfigureSSOProvider(Command[SSOProviderId]):
-    tenant_id: TenantId
     issuer: str
     client_id: str
     client_secret: str
+    is_global: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class AddSSOProviderMembership(Command[None]):
+    provider_id: SSOProviderId
+    tenant_id: TenantId
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,6 +199,12 @@ class RevokeApiKey(Command[None]):
 class LoginWithPassword(Command[LoginResult]):
     email: str
     password: str
+
+
+@dataclass(frozen=True, slots=True)
+class LoginWithDatabricksApps(Command[LoginResult]):
+    email: str
+    ignore_status: bool = False
 
 
 @dataclass(frozen=True, slots=True)

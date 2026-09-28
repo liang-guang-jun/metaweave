@@ -13,9 +13,9 @@ def _write_config(directory: Path, name: str, content: str) -> None:
 
 def test_deep_merge_preserves_unoverridden_nested_values() -> None:
     assert deep_merge(
-        {"database": {"url": "base", "echo": False}, "values": [1]},
+        {"database": {"database": "base", "echo": False}, "values": [1]},
         {"database": {"echo": True}, "values": [2]},
-    ) == {"database": {"url": "base", "echo": True}, "values": [2]}
+    ) == {"database": {"database": "base", "echo": True}, "values": [2]}
 
 
 def test_loader_applies_selected_profiles_by_priority(tmp_path: Path) -> None:
@@ -29,7 +29,7 @@ configuration:
     uat: {priority: 20}
     prod: {priority: 30}
 app: {name: metaweave, debug: false}
-database: {url: sqlite+aiosqlite:///base.db, echo: false, busy_timeout_ms: 5000}
+database: {provider: sqlite, driver: aiosqlite, database: base.db, auth: {type: none}, echo: false}
 logging: {level: INFO, json: false}
 """,
     )
@@ -41,7 +41,7 @@ logging: {level: INFO, json: false}
     _write_config(
         tmp_path,
         "config.uat.yaml",
-        "database: {url: sqlite+aiosqlite:///uat.db}\n",
+        "database: {database: uat.db}\n",
     )
     _write_config(
         tmp_path,
@@ -51,7 +51,7 @@ logging: {level: INFO, json: false}
 
     config = load_config(config_dir=tmp_path)
 
-    assert config.database.url == "sqlite+aiosqlite:///uat.db"
+    assert config.database.database == "uat.db"
     assert config.database.echo is True
     assert config.logging.level == "WARNING"
     assert config.logging.json_output is True
@@ -66,7 +66,7 @@ def test_loader_skips_missing_profiles_and_rejects_registry_override(
         """
 configuration: {profiles: {dev: {priority: 10}}}
 app: {name: metaweave, debug: false}
-database: {url: sqlite+aiosqlite:///base.db, echo: false, busy_timeout_ms: 5000}
+database: {provider: sqlite, driver: aiosqlite, database: base.db, auth: {type: none}, echo: false}
 logging: {level: INFO, json: false}
 """,
     )
@@ -88,7 +88,7 @@ def test_loader_skips_registered_profile_when_its_file_is_missing(
         """
 configuration: {profiles: {missing: {priority: 10}}}
 app: {name: metaweave, debug: false}
-database: {url: sqlite+aiosqlite:///base.db, echo: false, busy_timeout_ms: 5000}
+database: {provider: sqlite, driver: aiosqlite, database: base.db, auth: {type: none}, echo: false}
 logging: {level: INFO, json: false}
 """,
     )

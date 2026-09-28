@@ -15,6 +15,11 @@ branch_labels = None
 depends_on = None
 
 
+def _uses_sqlite() -> bool:
+    """Return whether this migration runs on SQLite."""
+    return op.get_bind().dialect.name == "sqlite"
+
+
 def upgrade() -> None:
     op.add_column(
         "iam_principals",
@@ -29,16 +34,26 @@ def upgrade() -> None:
             ") WHERE principal_type = 'SERVICE_PRINCIPAL'"
         )
     )
-    # SQLite does not support DROP COLUMN on all supported versions; batch
-    # recreation also preserves the joined-table foreign key.
-    with op.batch_alter_table("iam_service_principals", recreate="always") as batch:
-        batch.drop_column("active")
+    # SQLite does not support DROP COLUMN on all supported versions.
+    if _uses_sqlite():
+        with op.batch_alter_table("iam_service_principals", recreate="always") as batch:
+            batch.drop_column("active")
+    else:
+        op.drop_column("iam_service_principals", "active")
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("iam_service_principals", recreate="always") as batch:
-        batch.add_column(
-            sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.true())
+    if _uses_sqlite():
+        with op.batch_alter_table("iam_service_principals", recreate="always") as batch:
+            batch.add_column(
+                sa.Column(
+                    "active", sa.Boolean(), nullable=False, server_default=sa.true()
+                )
+            )
+    else:
+        op.add_column(
+            "iam_service_principals",
+            sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.true()),
         )
     connection = op.get_bind()
     connection.execute(

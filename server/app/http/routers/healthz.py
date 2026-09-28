@@ -33,6 +33,7 @@ class HealthzResponse(BaseModel):
     # Header the API expects the access token in, so clients can follow the
     # configured name instead of hardcoding one.
     token_header: str
+    identity_providers: dict[str, dict[str, object]]
     password_policy: PasswordPolicyResponse
 
 
@@ -42,12 +43,19 @@ async def healthz(
 ) -> HealthzResponse:
     """Report liveness, registration availability, and password rules."""
     config = container.config()
-    policy = config.password_policy
+    policy = config.iam.password
     return HealthzResponse(
         status="ok",
-        register_enabled=config.registration.enabled,
-        register_skip_verify=config.registration.email.skip_verify,
-        token_header=config.token.header,
+        register_enabled=config.iam.registration.enabled,
+        register_skip_verify=config.iam.registration.email.skip_verify,
+        token_header=config.iam.token.header,
+        identity_providers={
+            "local": {"enabled": config.iam.identity.providers.local.enabled},
+            "databricksapps": {
+                "enabled": config.iam.identity.providers.databricksapps.enabled,
+                "headers": config.iam.identity.providers.databricksapps.headers.model_dump(),
+            },
+        },
         password_policy=PasswordPolicyResponse(
             min_length=policy.min_length,
             require_upper=policy.require_upper,

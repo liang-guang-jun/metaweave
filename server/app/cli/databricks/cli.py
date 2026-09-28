@@ -16,6 +16,7 @@ from rich.console import Console
 
 from ...bootstrap.config import repository_root
 from . import (
+    DEFAULT_JOBS,
     AppSourcePathMissingError,
     DatabricksAppDeployer,
     DatabricksAuthConfig,
@@ -155,6 +156,17 @@ DryRunOption = Annotated[
         help="Report the changes that would be synced without touching the workspace.",
     ),
 ]
+JobsOption = Annotated[
+    int,
+    typer.Option(
+        "--jobs",
+        min=1,
+        help=(
+            "Number of files to upload or delete at the same time. Use 1 to "
+            "transfer sequentially."
+        ),
+    ),
+]
 RecursiveOption = Annotated[
     bool,
     typer.Option(
@@ -238,7 +250,7 @@ def _create_client(
 
 
 def _service(
-    client: WorkspaceClient, presenter: RichPresenter
+    client: WorkspaceClient, presenter: RichPresenter, jobs: int = DEFAULT_JOBS
 ) -> DatabricksDeploymentService:
     """Compose the deployment subsystem, sharing one progress presenter."""
     return DatabricksDeploymentService(
@@ -246,6 +258,7 @@ def _service(
         app_deployer=DatabricksAppDeployer(client, presenter),
         sync_service=SourceSyncService(presenter),
         progress=presenter,
+        jobs=jobs,
     )
 
 
@@ -317,16 +330,18 @@ def sync(
     source_code_path: SourceCodePathOption = None,
     recursive: RecursiveOption = True,
     force: ForceUploadOption = False,
+    jobs: JobsOption = DEFAULT_JOBS,
     dry_run: DryRunOption = False,
 ) -> None:
     """Upload a local directory into the app's workspace folder without deploying.
 
     This is the low-level transfer: it copies the selected files and compares
-    nothing, so it never deletes remote files. ``--force`` additionally uploads
-    files that .gitignore hides and refreshes the remote deployment snapshot
-    (``.deploy-manifest.json``) with what it uploaded, so the next deploy does
-    not see those files as new again. ``--source`` may name a single file, which
-    is uploaded under its own name without consulting any .gitignore.
+    nothing, so it never deletes remote files. Files are transferred ``--jobs``
+    at a time. ``--force`` additionally uploads files that .gitignore hides and
+    refreshes the remote deployment snapshot (``.deploy-manifest.json``) with
+    what it uploaded, so the next deploy does not see those files as new again.
+    ``--source`` may name a single file, which is uploaded under its own name
+    without consulting any .gitignore.
     """
     presenter = RichPresenter(console)
     client = _create_client(
@@ -341,7 +356,7 @@ def sync(
     remote_root = _remote_root(client, app_name, source_code_path)
     presenter.announce(remote_root)
     try:
-        result = _service(client, presenter).upload(
+        result = _service(client, presenter, jobs).upload(
             UploadRequest(
                 local_root=_local_root(source),
                 remote_root=remote_root,
@@ -374,15 +389,16 @@ def deploy(
     source_code_path: SourceCodePathOption = None,
     dry_run: DryRunOption = False,
     force_deploy: ForceDeployOption = False,
+    jobs: JobsOption = DEFAULT_JOBS,
 ) -> None:
     """Sync local sources and trigger a snapshot deployment of the app.
 
     Only files whose SHA-256 changed since the last successful deployment are
-    uploaded, and only files that deployment owned are ever deleted. A run
-    without changes deploys nothing unless ``--force-deploy`` asks for it.
-    ``--source`` may name a single file, which then only ever touches that file:
-    its deployment is kept, and nothing else is deleted or dropped from the
-    manifest.
+    uploaded, and only files that deployment owned are ever deleted; both run
+    ``--jobs`` at a time. A run without changes deploys nothing unless
+    ``--force-deploy`` asks for it. ``--source`` may name a single file, which
+    then only ever touches that file: its deployment is kept, and nothing else
+    is deleted or dropped from the manifest.
     """
     presenter = RichPresenter(console)
     client = _create_client(
@@ -402,7 +418,7 @@ def deploy(
         scan=_scan_options(include, exclude),
         dry_run=dry_run,
     )
-    service = _service(client, presenter)
+    service = _service(client, presenter, jobs)
     try:
         sync_result = service.reconcile(request)
         presenter.render_sync(sync_result, dry_run=dry_run)

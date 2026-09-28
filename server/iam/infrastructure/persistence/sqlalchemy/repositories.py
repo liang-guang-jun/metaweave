@@ -274,15 +274,24 @@ class SqlAlchemySSOProviderRepository(SSOProviderRepository):
 
     async def get(self, provider_id: SSOProviderId) -> SSOProvider | None:
         row = await self.session.get(SSOProviderRecord, str(provider_id))
+        return self._provider(row)
+
+    async def by_issuer(self, issuer: str) -> SSOProvider | None:
+        row = await self.session.scalar(
+            select(SSOProviderRecord).where(SSOProviderRecord.issuer == issuer)
+        )
+        return self._provider(row)
+
+    def _provider(self, row: SSOProviderRecord | None) -> SSOProvider | None:
         if row is None:
             return None
         provider = SSOProvider(
             SSOProviderId(row.id),
-            TenantId(row.tenant_id),
             row.issuer,
             row.client_id,
             row.client_secret,
             active=row.active,
+            is_global=row.is_global,
             version=row.version,
         )
         self.uow.track(provider)
@@ -292,15 +301,36 @@ class SqlAlchemySSOProviderRepository(SSOProviderRepository):
         self.session.add(
             SSOProviderRecord(
                 id=str(provider.id),
-                tenant_id=str(provider.tenant_id),
                 issuer=provider.issuer,
                 client_id=provider.client_id,
                 client_secret=provider.client_secret,
                 active=provider.active,
+                is_global=provider.is_global,
                 version=provider.version,
             )
         )
         self.uow.track(provider)
+
+    async def has_membership(
+        self, provider_id: SSOProviderId, tenant_id: TenantId | None = None
+    ) -> bool:
+        query = select(SSOProviderMembershipRecord.id).where(
+            SSOProviderMembershipRecord.provider_id == str(provider_id)
+        )
+        if tenant_id is not None:
+            query = query.where(SSOProviderMembershipRecord.tenant_id == str(tenant_id))
+        return await self.session.scalar(query) is not None
+
+    async def add_membership(
+        self, provider_id: SSOProviderId, tenant_id: TenantId
+    ) -> None:
+        from uuid import uuid4
+
+        self.session.add(
+            SSOProviderMembershipRecord(
+                id=str(uuid4()), provider_id=str(provider_id), tenant_id=str(tenant_id)
+            )
+        )
 
 
 class SqlAlchemyExternalSSOIdentityRepository(ExternalSSOIdentityRepository):

@@ -385,36 +385,38 @@ class GroupMembership(VersionedAggregate[UUID]):
 
 
 class SSOProvider(VersionedAggregate[UUID]):
-    """Tenant OIDC provider configuration; secrets remain infrastructure-owned."""
+    """SSO provider definition; tenant access is stored separately."""
 
     def __init__(
         self,
         provider_id: SSOProviderId,
-        tenant_id: TenantId,
         issuer: str,
         client_id: str,
         client_secret: str,
         *,
+        is_global: bool = False,
         active: bool = True,
         version: int = 0,
     ) -> None:
         super().__init__(version=version)
-        if not issuer.strip() or not client_id.strip() or not client_secret.strip():
+        if not issuer.strip() or (
+            not is_global and (not client_id.strip() or not client_secret.strip())
+        ):
             raise IamDomainError("SSO issuer, client id and secret are required")
         (
             self._id,
-            self.tenant_id,
             self.issuer,
             self.client_id,
             self.client_secret,
             self.active,
+            self.is_global,
         ) = (
             provider_id,
-            tenant_id,
             issuer.strip(),
             client_id.strip(),
             client_secret,
             active,
+            is_global,
         )
 
     @property
@@ -425,14 +427,14 @@ class SSOProvider(VersionedAggregate[UUID]):
     def configure(
         cls,
         provider_id: SSOProviderId,
-        tenant_id: TenantId,
         issuer: str,
         client_id: str,
         client_secret: str,
+        *,
+        is_global: bool = False,
     ) -> SSOProvider:
-        provider = cls(provider_id, tenant_id, issuer, client_id, client_secret)
-        provider._record_state_change(
-            SSOProviderConfigured(provider.id, tenant_id, provider.issuer)
+        provider = cls(
+            provider_id, issuer, client_id, client_secret, is_global=is_global
         )
         return provider
 

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
+from time import monotonic, sleep
 from typing import TYPE_CHECKING
 
 from .manifest import MANIFEST_NAME, Manifest, ManifestCodec
@@ -11,9 +14,21 @@ from .source import SourceFile
 
 if TYPE_CHECKING:  # pragma: no cover
     from databricks.sdk import WorkspaceClient
+    from tenacity import RetryCallState, Retrying
+
+    from .progress import ProgressTask
 
 _WORKSPACE_ROOT = "/Workspace"
 _LEGACY_WORKSPACE_ROOTS = ("/Shared", "/Users", "/Repos")
+
+#: Number of files transferred at the same time. The SDK client is synchronous,
+#: so each transfer gets its own thread; ``--jobs 1`` keeps them sequential.
+DEFAULT_JOBS = 8
+#: How often one throttled transfer is attempted before the run fails.
+DEFAULT_ATTEMPTS = 5
+_RETRY_INITIAL_SECONDS = 1.0
+_RETRY_MAX_SECONDS = 30.0
+_PAUSE_POLL_SECONDS = 0.5
 
 
 class WorkspaceError(RuntimeError):
@@ -56,6 +71,104 @@ def normalize_workspace_path(path: str) -> str:
     return normalized
 
 
+def is_rate_limited(error: BaseException) -> bool:
+    """Report whether a failed transfer was the workspace throttling us."""
+    if not isinstance(error, WorkspaceUploadError | WorkspaceDeleteError):
+        return False
+    return _is_throttled_response(error.error)
+
+
+def _is_throttled_response(error: BaseException) -> bool:
+    """Report whether the SDK error is a throttle the retry policy waits out."""
+    return isinstance(error, _throttled_error_types())
+
+
+class WorkspaceThrottle:
+    """Shared pause that keeps parallel workers inside the workspace's limits.
+
+    A throttle response means the workspace is already at its request limit, so
+    letting the other workers keep firing only deepens the problem: all of them
+    wait out the pause before their next call.
+    """
+
+    def __init__(self) -> None:
+        """Start with no pause scheduled."""
+        self._lock = Lock()
+        self._resume_at = 0.0
+
+    def wait(self) -> None:
+        """Block until the next call is allowed to go out."""
+        while True:
+            with self._lock:
+                remaining = self._resume_at - monotonic()
+            if remaining <= 0:
+                return
+            sleep(min(remaining, _PAUSE_POLL_SECONDS))
+
+    def pause(self, seconds: float) -> None:
+        """Delay every worker by at least ``seconds``."""
+        with self._lock:
+            self._resume_at = max(self._resume_at, monotonic() + seconds)
+
+
+def build_retryer(attempts: int, throttle: WorkspaceThrottle) -> Retrying:
+    """Return the retry policy of one repository.
+
+    The workspace file API answers a burst of parallel transfers with HTTP 429
+    and the SDK does not retry them, so they are retried here with exponential
+    jitter. Every attempt waits out the shared throttle, and ``Retry-After`` is
+    honoured when the platform sends one.
+    """
+    from tenacity import (
+        Retrying,
+        retry_if_exception_type,
+        stop_after_attempt,
+        wait_exponential_jitter,
+    )
+
+    def back_off(state: RetryCallState) -> None:
+        """Pause every worker for as long as this attempt has to wait."""
+        error = state.outcome.exception() if state.outcome else None
+        advised = getattr(error, "retry_after_secs", None)
+        throttle.pause(max(float(advised or 0), state.upcoming_sleep))
+
+    return Retrying(
+        stop=stop_after_attempt(attempts),
+        wait=wait_exponential_jitter(
+            initial=_RETRY_INITIAL_SECONDS, max=_RETRY_MAX_SECONDS
+        ),
+        retry=retry_if_exception_type(_throttled_error_types()),
+        before=lambda _state: throttle.wait(),
+        before_sleep=back_off,
+        reraise=True,
+    )
+
+
+def _throttled_error_types() -> tuple[type[BaseException], ...]:
+    """Return the SDK errors the retry policy waits out.
+
+    HTTP 429 arrives as :class:`TooManyRequests`; the other names are the
+    platform's request-limit error codes, which mean the same thing here.
+    """
+    from databricks.sdk.errors import (
+        DeadlineExceeded,
+        InternalError,
+        RequestLimitExceeded,
+        ResourceExhausted,
+        TemporarilyUnavailable,
+        TooManyRequests,
+    )
+
+    return (
+        TooManyRequests,
+        RequestLimitExceeded,
+        ResourceExhausted,
+        TemporarilyUnavailable,
+        InternalError,
+        DeadlineExceeded,
+    )
+
+
 class WorkspaceSourceRepository:
     """Read and write the app source folder through the Databricks SDK."""
 
@@ -64,20 +177,32 @@ class WorkspaceSourceRepository:
         client: WorkspaceClient,
         root: str,
         progress: ProgressReporter | None = None,
+        jobs: int = DEFAULT_JOBS,
+        attempts: int = DEFAULT_ATTEMPTS,
     ) -> None:
         """Bind the repository to one app source folder."""
         self.client = client
         self.root = root
         self._progress = progress or NullProgressReporter()
+        self._jobs = max(1, jobs)
+        self._attempts = max(1, attempts)
         self._created_directories: set[str] = set()
+        self._directory_lock = Lock()
+        self._throttle = WorkspaceThrottle()
+        self._retryer: Retrying | None = None
         self._codec = ManifestCodec()
 
     def upload_all(self, files: Sequence[SourceFile]) -> int:
-        """Upload every file, reporting progress and creating parent folders."""
+        """Upload every file in parallel, reporting progress and creating folders.
+
+        The parent folders are created in one serial pass first, so the workers
+        never race on the workspace tree; a failure in any worker stops the
+        remaining uploads and propagates its own error.
+        """
+        for source in files:
+            self._ensure_directory(self._parent_of(source.relative_path))
         with self._progress.uploading(len(files)) as task:
-            for source in files:
-                self.upload(source)
-                task.advance()
+            self._in_parallel(files, self.upload, task)
         return len(files)
 
     def upload(self, source: SourceFile) -> None:
@@ -85,22 +210,25 @@ class WorkspaceSourceRepository:
         from databricks.sdk.errors.base import DatabricksError
         from databricks.sdk.service.workspace import ImportFormat
 
-        target = f"{self.root}/{source.relative_path}"
-        self._ensure_directory(target.rsplit("/", 1)[0])
-        try:
+        target = self._target(source.relative_path)
+        self._ensure_directory(self._parent_of(source.relative_path))
+
+        def send() -> None:
+            """Send the file, re-opened so a retry gets a fresh stream."""
             with source.absolute_path.open("rb") as stream:
                 self.client.workspace.upload(
                     target, stream, format=ImportFormat.AUTO, overwrite=True
                 )
+
+        try:
+            self._retrying(send)
         except DatabricksError as error:
             raise WorkspaceUploadError(target, error) from error
 
     def delete_all(self, relative_paths: Sequence[str]) -> int:
-        """Delete several remote files, reporting progress."""
+        """Delete several remote files in parallel, reporting progress."""
         with self._progress.deleting(len(relative_paths)) as task:
-            for relative in relative_paths:
-                self.delete(relative)
-                task.advance()
+            self._in_parallel(relative_paths, self.delete, task)
         return len(relative_paths)
 
     def delete(self, relative_path: str) -> None:
@@ -108,9 +236,9 @@ class WorkspaceSourceRepository:
         from databricks.sdk.errors import ResourceDoesNotExist
         from databricks.sdk.errors.base import DatabricksError
 
-        target = f"{self.root}/{relative_path}"
+        target = self._target(relative_path)
         try:
-            self.client.workspace.delete(target)
+            self._retrying(lambda: self.client.workspace.delete(target))
         except ResourceDoesNotExist:
             # A previous run or a manual cleanup already removed it; the end
             # state is the one this deployment asked for.
@@ -149,8 +277,54 @@ class WorkspaceSourceRepository:
         )
 
     def _ensure_directory(self, directory: str) -> None:
-        """Create a parent folder once per repository lifetime."""
-        if directory in self._created_directories:
+        """Create a parent folder once per repository lifetime, thread-safely."""
+        with self._directory_lock:
+            if directory in self._created_directories:
+                return
+            self.client.workspace.mkdirs(directory)
+            self._created_directories.add(directory)
+
+    def _retrying[T](self, action: Callable[[], T]) -> T:
+        """Run one SDK call through the retry policy of this repository."""
+        if self._retryer is None:
+            self._retryer = build_retryer(self._attempts, self._throttle)
+        return self._retryer(action)
+
+    def _target(self, relative_path: str) -> str:
+        """Return the workspace path of one source-relative path."""
+        return f"{self.root}/{relative_path}"
+
+    def _parent_of(self, relative_path: str) -> str:
+        """Return the workspace folder holding one source-relative path."""
+        return self._target(relative_path).rsplit("/", 1)[0]
+
+    def _in_parallel[T](
+        self,
+        items: Sequence[T],
+        action: Callable[[T], None],
+        task: ProgressTask,
+    ) -> None:
+        """Run one remote call per item, at most ``jobs`` of them at a time.
+
+        The first failure cancels the queued calls and is re-raised, so a
+        partial transfer stops early instead of running through a broken
+        workspace folder.
+        """
+        workers = min(self._jobs, len(items))
+        if workers <= 1:
+            for item in items:
+                action(item)
+                task.advance()
             return
-        self.client.workspace.mkdirs(directory)
-        self._created_directories.add(directory)
+        with ThreadPoolExecutor(
+            max_workers=workers, thread_name_prefix="dbr-transfer"
+        ) as pool:
+            futures = [pool.submit(action, item) for item in items]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except BaseException:
+                    for pending in futures:
+                        pending.cancel()
+                    raise
+                task.advance()

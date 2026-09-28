@@ -4,13 +4,20 @@ import hashlib
 import io
 import json
 import os
+import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from threading import Lock
 from types import SimpleNamespace
 from typing import BinaryIO
 
 import pytest
-from databricks.sdk.errors import PermissionDenied, ResourceDoesNotExist
+from databricks.sdk.errors import (
+    PermissionDenied,
+    ResourceDoesNotExist,
+    TooManyRequests,
+)
 from databricks.sdk.service.apps import (
     App,
     AppDeployment,
@@ -32,6 +39,7 @@ from server.app.cli.databricks import (
     sha256_file,
 )
 from server.app.cli.databricks import cli as dbr
+from server.app.cli.databricks import workspace as dbr_workspace
 from server.app.cli.main import app
 
 runner = CliRunner()
@@ -39,6 +47,8 @@ runner = CliRunner()
 _HOST = "https://adb-1234567890.12.azuredatabricks.net"
 _REMOTE = "/Workspace/Users/me/metaweave"
 _MANIFEST = f"{_REMOTE}/{MANIFEST_NAME}"
+#: How long a fake transfer is held so parallel workers can overlap.
+_TRANSFER_DELAY = 0.05
 
 
 def _flat(output: str) -> str:
@@ -894,6 +904,88 @@ class _RejectingDelete(_FakeWorkspace):
         raise PermissionDenied("no delete access")
 
 
+class _RejectingUpload(_FakeWorkspace):
+    """Refuse one target, whatever order the transfers run in."""
+
+    def __init__(self, target: str) -> None:
+        super().__init__()
+        self.target = target
+
+    def upload(self, path: str, content: bytes | BinaryIO, **kwargs: object) -> None:
+        if path == self.target:
+            raise PermissionDenied("no write access")
+        super().upload(path, content, **kwargs)
+
+
+class _ConcurrencyProbe(_FakeWorkspace):
+    """Fake workspace that records the peak number of transfers in flight.
+
+    Each transfer is held for a moment so overlapping workers are observable
+    without depending on scheduling luck.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.peak = {"uploads": 0, "deletes": 0}
+        self.in_flight = {"uploads": 0, "deletes": 0}
+        self._lock = Lock()
+
+    def upload(self, path: str, content: bytes | BinaryIO, **kwargs: object) -> None:
+        if isinstance(content, bytes):
+            # The deployment manifest is written by the caller, not by the pool.
+            super().upload(path, content, **kwargs)
+            return
+        with self._transfer("uploads"):
+            super().upload(path, content, **kwargs)
+
+    def delete(self, path: str) -> None:
+        with self._transfer("deletes"):
+            super().delete(path)
+
+    @contextmanager
+    def _transfer(self, kind: str) -> Iterator[None]:
+        """Track one transfer and hold it open so workers can overlap."""
+        with self._lock:
+            self.in_flight[kind] += 1
+            self.peak[kind] = max(self.peak[kind], self.in_flight[kind])
+        time.sleep(_TRANSFER_DELAY)
+        try:
+            yield
+        finally:
+            with self._lock:
+                self.in_flight[kind] -= 1
+
+
+class _ThrottlingWorkspace(_FakeWorkspace):
+    """Answer the first ``free`` transfers of a target with HTTP 429."""
+
+    def __init__(self, free: int = 2, *, target: str | None = None) -> None:
+        super().__init__()
+        self.free = free
+        self.target = target
+        self.throttled = 0
+        self._lock = Lock()
+
+    def upload(self, path: str, content: bytes | BinaryIO, **kwargs: object) -> None:
+        self._throttle(path)
+        super().upload(path, content, **kwargs)
+
+    def delete(self, path: str) -> None:
+        self._throttle(path)
+        super().delete(path)
+
+    def _throttle(self, path: str) -> None:
+        """Reject the transfer while this target is still inside its free run."""
+        with self._lock:
+            if self.target is not None and path != self.target:
+                return
+            if self.throttled >= self.free:
+                return
+            self.throttled += 1
+        message = "Too many requests. Please wait a moment and try again."
+        raise TooManyRequests(message, retry_after_secs=0)
+
+
 def _write_source(root: Path, files: dict[str, str]) -> Path:
     """Write one source file per mapping entry and return the root directory."""
     for relative, content in files.items():
@@ -1393,11 +1485,158 @@ def test_upload_failure_does_not_update_the_manifest(
     monkeypatch.setattr(dbr, "_workspace_client", lambda **_: client)
     source = _write_source(tmp_path, {"app.py": "one", "server/two.py": "two"})
 
-    result = runner.invoke(dbr.app, _deploy_arguments(source))
+    result = runner.invoke(dbr.app, _deploy_arguments(source, "--jobs", "1"))
 
     assert result.exit_code == 1
     assert _MANIFEST not in client.workspace.files
     assert len(client.workspace.uploads) == 1
+
+
+def test_parallel_upload_failure_does_not_update_the_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _FakeClient(_app_info())
+    client.workspace = _RejectingUpload(f"{_REMOTE}/server/two.py")
+    monkeypatch.setattr(dbr, "_workspace_client", lambda **_: client)
+    source = _write_source(tmp_path, {"app.py": "one", "server/two.py": "two"})
+
+    result = runner.invoke(dbr.app, _deploy_arguments(source))
+
+    assert result.exit_code == 1
+    assert "/server/two.py'" in result.output
+    assert "Traceback" not in result.output
+    assert _MANIFEST not in client.workspace.files
+    assert not client.apps.deployments
+
+
+def test_source_uploads_run_in_parallel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _FakeClient(_app_info())
+    client.workspace = _ConcurrencyProbe()
+    monkeypatch.setattr(dbr, "_workspace_client", lambda **_: client)
+    source = _write_source(tmp_path, {f"file{i}.py": "content" for i in range(4)})
+
+    result = runner.invoke(dbr.app, _sync_arguments(source))
+
+    assert result.exit_code == 0, result.output
+    assert len(client.workspace.uploads) == 4
+    assert client.workspace.peak["uploads"] > 1
+
+
+def test_deletions_run_in_parallel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _FakeClient(_app_info())
+    monkeypatch.setattr(dbr, "_workspace_client", lambda **_: client)
+    source = _write_source(tmp_path, {f"file{i}.py": "content" for i in range(4)})
+    runner.invoke(dbr.app, _deploy_arguments(source))
+
+    probe = _ConcurrencyProbe()
+    probe.files = dict(client.workspace.files)
+    client.workspace = probe
+    for index in range(3):
+        (source / f"file{index}.py").unlink()
+
+    result = runner.invoke(dbr.app, _deploy_arguments(source))
+
+    assert result.exit_code == 0, result.output
+    assert len(probe.deleted) == 3
+    assert probe.peak["deletes"] > 1
+
+
+def test_jobs_one_transfers_sequentially(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    client = _FakeClient(_app_info())
+    client.workspace = _ConcurrencyProbe()
+    monkeypatch.setattr(dbr, "_workspace_client", lambda **_: client)
+    source = _write_source(tmp_path, {f"file{i}.py": "content" for i in range(4)})
+
+    result = runner.invoke(dbr.app, _sync_arguments(source, "--jobs", "1"))
+
+    assert result.exit_code == 0, result.output
+    assert len(client.workspace.uploads) == 4
+    assert client.workspace.peak["uploads"] == 1
+
+
+def test_jobs_must_be_positive(fake_client: _FakeClient, tmp_path: Path) -> None:
+    source = _write_source(tmp_path, {"app.py": "one"})
+
+    result = runner.invoke(dbr.app, _sync_arguments(source, "--jobs", "0"))
+
+    assert result.exit_code == 2
+    assert "--jobs" in result.output
+
+
+def test_throttled_uploads_are_retried(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fast_retries(monkeypatch)
+    client = _FakeClient(_app_info())
+    probe = _ThrottlingWorkspace(free=2)
+    client.workspace = probe
+    monkeypatch.setattr(dbr, "_workspace_client", lambda **_: client)
+    source = _write_source(tmp_path, {"app.py": "one", "server/two.py": "two"})
+
+    result = runner.invoke(dbr.app, _deploy_arguments(source))
+
+    assert result.exit_code == 0, result.output
+    assert probe.throttled == 2
+    assert sorted(_source_uploads(client)) == [
+        f"{_REMOTE}/app.py",
+        f"{_REMOTE}/server/two.py",
+    ]
+    assert _manifest_paths(client) == {"app.py", "server/two.py"}
+
+
+def test_throttled_deletions_are_retried(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fast_retries(monkeypatch)
+    client = _FakeClient(_app_info())
+    monkeypatch.setattr(dbr, "_workspace_client", lambda **_: client)
+    source = _write_source(tmp_path, {"app.py": "one"})
+    runner.invoke(dbr.app, _deploy_arguments(source))
+
+    probe = _ThrottlingWorkspace(free=1)
+    probe.files = dict(client.workspace.files)
+    client.workspace = probe
+    (source / "app.py").unlink()
+
+    result = runner.invoke(dbr.app, _deploy_arguments(source))
+
+    assert result.exit_code == 0, result.output
+    assert probe.throttled == 1
+    assert probe.deleted == [f"{_REMOTE}/app.py"]
+
+
+def test_an_endless_throttle_fails_with_a_jobs_remedy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fast_retries(monkeypatch)
+    client = _FakeClient(_app_info())
+    probe = _ThrottlingWorkspace(free=100)
+    client.workspace = probe
+    monkeypatch.setattr(dbr, "_workspace_client", lambda **_: client)
+    source = _write_source(tmp_path, {"app.py": "one"})
+
+    result = runner.invoke(dbr.app, _deploy_arguments(source))
+
+    assert result.exit_code == 1
+    assert "Too many requests" in result.output
+    assert "--jobs 2" in result.output
+    assert "Traceback" not in result.output
+    assert "service principal" not in result.output
+    # One file, one attempt each: the policy gives up instead of looping.
+    assert probe.throttled == dbr_workspace.DEFAULT_ATTEMPTS
+    assert _MANIFEST not in client.workspace.files
+
+
+def _fast_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Shrink the retry backoff so the tests do not sleep for real."""
+    monkeypatch.setattr(dbr_workspace, "_RETRY_INITIAL_SECONDS", 0.001)
+    monkeypatch.setattr(dbr_workspace, "_RETRY_MAX_SECONDS", 0.002)
 
 
 def test_delete_failure_keeps_the_previous_manifest(
@@ -1519,10 +1758,10 @@ def test_exclude_wins_over_include(fake_client: _FakeClient, tmp_path: Path) -> 
     )
 
     assert result.exit_code == 0, result.output
-    assert fake_client.workspace.uploads == [
+    assert set(fake_client.workspace.uploads) == {
         f"{_REMOTE}/.gitignore",
         f"{_REMOTE}/dist/client/app.js",
-    ]
+    }
 
 
 def test_deploy_excludes_matching_files(

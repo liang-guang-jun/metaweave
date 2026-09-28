@@ -49,7 +49,10 @@ def serve(
             # starts: a file-backed database is shared with that child while an
             # in-memory one is not.
             logger.info("database.migrations.applying", revision="head")
-            apply_migrations(create_container(config).engine())
+            apply_migrations(
+                create_container(config).engine(),
+                dispose_after=config.database.provider != "sqlite",
+            )
         uvicorn.run(
             "server.app.http.app:create_app",
             factory=True,
@@ -62,7 +65,10 @@ def serve(
     container = create_container(config)
     if upgrade_db:
         logger.info("database.migrations.applying", revision="head")
-        apply_migrations(container.engine())
+        apply_migrations(
+            container.engine(),
+            dispose_after=config.database.provider != "sqlite",
+        )
     uvicorn.run(
         create_app(container), host=resolved_host, port=resolved_port, log_config=None
     )

@@ -132,17 +132,28 @@ class GroupMemberRecord(Base):
 
 class SSOProviderRecord(Base):
     __tablename__ = "iam_sso_providers"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "issuer", name="uq_iam_sso_provider_issuer"),
-        Index("ix_iam_sso_provider_tenant", "tenant_id"),
-    )
+    __table_args__ = (UniqueConstraint("issuer", name="uq_iam_sso_provider_issuer"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("iam_tenants.id"))
     issuer: Mapped[str] = mapped_column(String(512))
     client_id: Mapped[str] = mapped_column(String(255))
     client_secret: Mapped[str] = mapped_column(String(1024))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_global: Mapped[bool] = mapped_column(Boolean, default=False)
     version: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SSOProviderMembershipRecord(Base):
+    __tablename__ = "iam_sso_provider_memberships"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider_id", "tenant_id", name="uq_iam_sso_provider_membership"
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    provider_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("iam_sso_providers.id")
+    )
+    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("iam_tenants.id"))
 
 
 class ExternalSSOIdentityRecord(Base):

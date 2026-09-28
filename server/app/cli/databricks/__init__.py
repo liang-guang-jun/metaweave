@@ -10,6 +10,7 @@ from __future__ import annotations
 from .apps import AppSourcePathMissingError, DatabricksAppDeployer
 from .auth import DatabricksAuthConfig, DatabricksAuthError, DatabricksClientFactory
 from .deployment import (
+    DEFAULT_JOBS,
     DatabricksDeploymentService,
     DeployRequest,
     SyncRequest,
@@ -43,6 +44,7 @@ from .workspace import (
 )
 
 __all__ = [
+    "DEFAULT_JOBS",
     "HASH_CHUNK_SIZE",
     "MANIFEST_NAME",
     "MANIFEST_VERSION",

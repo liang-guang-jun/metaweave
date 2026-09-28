@@ -13,7 +13,7 @@ def _record_migrations(monkeypatch: pytest.MonkeyPatch) -> list[object]:
     """Capture the engines handed to the migration helper."""
     engines: list[object] = []
 
-    def apply(engine: object, revision: str = "head") -> None:
+    def apply(engine: object, revision: str = "head", **_: object) -> None:
         engines.append(engine)
 
     monkeypatch.setattr("server.app.cli.server.apply_migrations", apply)
@@ -86,8 +86,8 @@ def test_server_command_passes_host_and_port_to_uvicorn(
 ) -> None:
     calls: dict[str, object] = {}
 
-    def run(app: object, *, host: str, port: int, log_config: None) -> None:
-        calls.update(app=app, host=host, port=port, log_config=log_config)
+    def run(app: object, **options: object) -> None:
+        calls.update(app=app, **options)
 
     monkeypatch.setattr("server.app.cli.server.uvicorn.run", run)
     result = runner.invoke(app, ["server", "--host", "0.0.0.0", "--port", "9000"])

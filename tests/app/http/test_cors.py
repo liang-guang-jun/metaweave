@@ -11,7 +11,7 @@ def test_cors_preflight_uses_configured_origins() -> None:
         {
             "app": {"name": "test"},
             "logging": {"colors": False},
-            "cors": {"allow_origins": ["http://example.test"]},
+            "server": {"cors": {"allow_origins": ["http://example.test"]}},
         }
     )
     container = create_container(config)

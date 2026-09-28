@@ -24,7 +24,12 @@ from rich.progress import (
 
 from .manifest import MANIFEST_NAME
 from .models import DeploymentResult, SyncResult, UploadResult
-from .workspace import WorkspaceDeleteError, WorkspaceError, WorkspaceUploadError
+from .workspace import (
+    WorkspaceDeleteError,
+    WorkspaceError,
+    WorkspaceUploadError,
+    is_rate_limited,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from .progress import ProgressTask
@@ -44,6 +49,10 @@ _UPLOAD_REMEDY = (
 )
 _DELETE_REMEDY = (
     "The deployment manifest was not updated, so the next deploy retries this deletion."
+)
+_THROTTLE_REMEDY = (
+    "The workspace rate limited the transfer even after retrying; re-run with a "
+    "lower --jobs (for example --jobs 2) or try again later."
 )
 
 
@@ -219,7 +228,9 @@ class RichPresenter:
 
     def _describe(self, error: BaseException, identity: str | None) -> str:
         """Return the message and the usual remedy for one failure."""
-        if isinstance(error, WorkspaceUploadError):
+        if is_rate_limited(error):
+            remedy = _THROTTLE_REMEDY
+        elif isinstance(error, WorkspaceUploadError):
             remedy = _UPLOAD_REMEDY
         elif isinstance(error, WorkspaceDeleteError):
             remedy = _DELETE_REMEDY

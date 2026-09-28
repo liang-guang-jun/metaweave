@@ -1,6 +1,3 @@
-# This file is mandatory. It alone declares available overlay tags and priority.
-# Existing files are merged after this file from lower to higher priority.
-# Missing profile files are skipped; this registry defines the merge order.
 configuration:
   profiles:
     dev:
@@ -13,87 +10,95 @@ configuration:
 app:
   name: metaweave
   debug: false
-  # Serve the built SPA from the HTTP root. `static` mounts `path` (resolved
-  # against the repository root); `disabled` leaves the root unmounted.
   frontend:
     type: static
     path: dist/client
-
-api:
-  # All HTTP API routes live under this prefix so they never overlap the SPA's
-  # client-side routes (for example /workspaces/{id}). Use "" for the root.
-  prefix: /api/v1
-
-database:
-  # The deployed app has no durable volume, so the default is an in-process
-  # SQLite database. Local development can switch back to a file-backed URL in
-  # an overlay such as config.dev.yaml.
-  url: "sqlite+aiosqlite:///:memory:"
-  echo: false
-  busy_timeout_ms: 5000
-
-logging:
-  level: INFO
-  json: false
-  colors: false
-  silenced_loggers:
-  #  []
-    - uvicorn
-    - sqlalchemy.engine
-  log_request_headers: false
 
 server:
   host: 127.0.0.1
   port: 8000
   reload: false
 
-cors:
-  # Browser origins allowed to call the API. Include the address the SPA is
-  # opened from so `localhost` and `127.0.0.1` stay interchangeable.
-  allow_origins:
-    - http://localhost:5173
-    - http://127.0.0.1:5173
-    - http://localhost:4173
-    - http://127.0.0.1:4173
-    - http://localhost:8000
-    - http://127.0.0.1:8000
-  allow_credentials: true
+  api:
+    prefix: /api/v1
 
-password_policy:
-  min_length: 8
-  require_upper: true
-  require_digit: true
-  require_symbol: true
-  max_failures: 5
-  lockout_seconds: 300
+  cors:
+    allow_origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+      - http://localhost:4173
+      - http://127.0.0.1:4173
+      - http://localhost:8000
+      - http://127.0.0.1:8000
+    allow_credentials: true
 
-token:
-  issuer: iam
-  audience: business-api
-  secret: development-only-change-me
-  # Header the API reads the access token from. Platforms such as Databricks
-  # Apps reserve `Authorization` for their own SSO, so this dedicated header is
-  # preferred; `Authorization: Bearer` stays accepted for plain API clients.
-  header: X-Bearer-Token
-  access_ttl_seconds: 3600
-  refresh_ttl_seconds: 2592000
+database:
+  # Databricks Apps supplies PGHOST, PGPORT, PGDATABASE, PGUSER and PGSSLMODE.
+  # LAKEBASE_ENDPOINT is wired from the App database resource in app.yaml.
+  provider: databricks_lakebase
+  driver: asyncpg
+  auth:
+    type: databricks_app
+  echo: false
 
-oidc:
-  issuer: ""
-  audience: ""
-  client_id: ""
+  pool:
+    size: 5
+    max_overflow: 10
+    timeout_seconds: 30
+    recycle_seconds: 1800
 
-register:
-  # Open the sign-up UI (reported as `register_enabled` by /healthz) and accept
-  # POST /iam/users. When false, accounts can only be created by an admin.
-  enabled: true
-  email:
-  # Skip the email-verification workflow: accounts created through the register
-  # endpoint are marked verified immediately.
-    skip_verify: true
+  options:
+    busy_timeout_ms: 5000
 
-acl:
-  max_entries: 1000
-  max_user_grants: 10000
-  cache_enabled: false
-  cache_ttl_seconds: 30
+logging:
+  level: INFO
+  json: false
+  colors: false
+
+  silenced_loggers:
+    - uvicorn
+    - sqlalchemy.engine
+
+  log_request_headers: false
+
+iam:
+  identity:
+    providers:
+      local:
+        enabled: true
+      databricksapps:
+        enabled: true
+        ignore_status: false
+        headers:
+          email: X-Forwarded-Email
+          access_token: X-Forwarded-Access-Token
+  registration:
+    enabled: true
+    email:
+      skip_verify: true
+
+  password:
+    min_length: 8
+    require_upper: true
+    require_digit: true
+    require_symbol: true
+
+  login:
+    max_failures: 5
+    lockout_seconds: 300
+
+  token:
+    issuer: iam
+    audience: business-api
+    secret: development-only-change-me
+    header: X-Bearer-Token
+    access_ttl_seconds: 3600
+    refresh_ttl_seconds: 2592000
+
+  acl:
+    max_entries: 1000
+    max_user_grants: 10000
+
+    cache:
+      enabled: false
+      ttl_seconds: 30

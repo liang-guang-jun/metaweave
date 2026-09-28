@@ -25,11 +25,17 @@ type AsgiApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 class HttpLoggingMiddleware:
     """Log one HTTP lifecycle while making request metadata available downstream."""
 
-    def __init__(self, app: AsgiApp, config: LoggingConfig) -> None:
+    def __init__(
+        self,
+        app: AsgiApp,
+        config: LoggingConfig,
+        confidential_headers: tuple[str, ...] = (),
+    ) -> None:
         """Store the ASGI application and its configured request logger."""
         self._app = app
         self._logger = get_logger("server.http")
         self._log_request_headers = config.log_request_headers
+        self._confidential_headers = {name.lower() for name in confidential_headers}
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Log HTTP completion without affecting non-HTTP ASGI scopes."""
@@ -61,7 +67,10 @@ class HttpLoggingMiddleware:
             "path": scope["path"],
         }
         if self._log_request_headers:
-            http_fields["request_headers"] = headers
+            http_fields["request_headers"] = {
+                name: "[redacted]" if name in self._confidential_headers else value
+                for name, value in headers.items()
+            }
 
         with bind_context(http_request_id=request_id, correlation_id=correlation_id):
             with execution_context(ExecutionContext(metadata)):

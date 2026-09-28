@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from ...application.messages import (
+    AddSSOProviderMembership,
     ConfigureSSOProvider,
     CreateServicePrincipal,
     DisablePrincipal,
@@ -16,6 +17,7 @@ from ...application.messages import (
     RestorePrincipal,
 )
 from ...domain.value_objects import (
+    SSOProviderId,
     ServicePrincipalId,
     Subject,
     SubjectType,
@@ -29,35 +31,51 @@ from ....app.http.dependencies import (
 from ....kernel.application.messaging.bus import MessageBus
 
 router = APIRouter(prefix="/tenants/{tenant_id}/identities", tags=["iam.identities"])
+provider_router = APIRouter(prefix="/sso/providers", tags=["iam.identities"])
 
 
 class SSOProviderRequest(BaseModel):
     issuer: str
     client_id: str
     client_secret: str
+    is_global: bool = False
 
 
 class ServicePrincipalRequest(BaseModel):
     name: str
 
 
-@router.post("/sso", status_code=status.HTTP_201_CREATED)
+@provider_router.post("", status_code=status.HTTP_201_CREATED)
 async def configure_sso(
-    tenant_id: UUID,
     request: SSOProviderRequest,
     bus: Annotated[MessageBus, Depends(get_message_bus)],
     _: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
 ) -> dict[str, UUID]:
-    """Configure a tenant OIDC provider."""
+    """Create a provider definition; tenant bindings use the membership route."""
+    if request.issuer == "databricksapps":
+        raise HTTPException(status_code=400, detail="databricksapps issuer is reserved")
     provider_id = await bus.send(
         ConfigureSSOProvider(
-            TenantId(tenant_id),
             request.issuer,
             request.client_id,
             request.client_secret,
+            request.is_global,
         )
     )
     return {"provider_id": provider_id.value}
+
+
+@router.post("/sso/{provider_id}/membership", status_code=status.HTTP_201_CREATED)
+async def add_sso_membership(
+    tenant_id: UUID,
+    provider_id: UUID,
+    bus: Annotated[MessageBus, Depends(get_message_bus)],
+    _: Annotated[AuthenticatedPrincipal, Depends(get_current_principal)],
+) -> dict[str, UUID]:
+    await bus.send(
+        AddSSOProviderMembership(SSOProviderId(provider_id), TenantId(tenant_id))
+    )
+    return {"provider_id": provider_id, "tenant_id": tenant_id}
 
 
 @router.post("/service-principals", status_code=status.HTTP_201_CREATED)

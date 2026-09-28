@@ -16,6 +16,9 @@ class Container(containers.DeclarativeContainer):
     """Application dependencies shared by HTTP, CLI, and background adapters."""
 
     config = providers.Object(AppConfig())
+    workspace_client = providers.Object(object())
+    workspace_credential_adapter = providers.Object(object())
+    database_backend = providers.Object(object())
     engine = providers.Singleton(AsyncEngine)
     session_factory = providers.Singleton(async_sessionmaker[AsyncSession])
     handlers = providers.Singleton(HandlerRegistry)

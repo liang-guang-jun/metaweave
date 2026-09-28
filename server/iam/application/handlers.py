@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+import secrets
 
 from ...kernel.application.context import current_context_or_none
 from ...kernel.application.common.page import Page
@@ -621,18 +622,45 @@ class ConfigureSSOProviderHandler(CommandHandler[ConfigureSSOProvider, SSOProvid
         self, message: ConfigureSSOProvider, uow: UnitOfWork | None = None
     ) -> SSOProviderId:
         transaction = _require_uow(uow)
-        await _require_admin(
-            self.memberships, transaction, message.tenant_id, self.permissions
-        )
+        actor = _actor()
+        if (
+            actor is None
+            or self.permissions is None
+            or not await self.permissions.has_system_admin_access(transaction, actor)
+        ):
+            raise IamDomainError("system administrator context required")
         provider = SSOProvider.configure(
             SSOProviderId(self.ids.new()),
-            message.tenant_id,
             message.issuer,
             message.client_id,
             message.client_secret,
+            is_global=message.is_global,
         )
         await self.providers(transaction).add(provider)
         return provider.id
+
+
+class AddSSOProviderMembershipHandler(CommandHandler[AddSSOProviderMembership, None]):
+    def __init__(self, providers, memberships, permissions=None) -> None:
+        self.providers, self.memberships, self.permissions = (
+            providers,
+            memberships,
+            permissions,
+        )
+
+    async def handle(
+        self, message: AddSSOProviderMembership, uow: UnitOfWork | None = None
+    ) -> None:
+        transaction = _require_uow(uow)
+        await _require_admin(
+            self.memberships, transaction, message.tenant_id, self.permissions
+        )
+        repo = self.providers(transaction)
+        provider = await repo.get(message.provider_id)
+        if provider is None or not provider.active:
+            raise IamDomainError("SSO provider not found")
+        if not await repo.has_membership(provider.id, message.tenant_id):
+            await repo.add_membership(provider.id, message.tenant_id)
 
 
 class LinkExternalSSOIdentityHandler(
@@ -662,8 +690,15 @@ class LinkExternalSSOIdentityHandler(
         provider = await providers.get(message.provider_id)
         if provider is None or not provider.active:
             raise IamDomainError("SSO provider not found")
+        context = current_context_or_none()
+        tenant_value = context.metadata.tenant_id if context else None
+        if not tenant_value or (
+            not provider.is_global
+            and not await providers.has_membership(provider.id, TenantId(tenant_value))
+        ):
+            raise IamDomainError("SSO provider membership required")
         await _require_admin(
-            self.memberships, transaction, provider.tenant_id, self.permissions
+            self.memberships, transaction, TenantId(tenant_value), self.permissions
         )
         identities = self.identities(transaction)
         if await identities.get_by_subject(provider.id, message.external_subject):
@@ -1069,6 +1104,57 @@ class LoginWithPasswordHandler(CommandHandler[LoginWithPassword, LoginResult]):
         ):
             raise IamDomainError("invalid credentials")
         return LoginResult(user.id, tuple(await self.memberships.list_user(user.id)))
+
+
+class LoginWithDatabricksAppsHandler(
+    CommandHandler[LoginWithDatabricksApps, LoginResult]
+):
+    def __init__(self, users, providers, identities, memberships, hasher, ids) -> None:
+        self.users, self.providers, self.identities = users, providers, identities
+        self.memberships, self.hasher, self.ids = memberships, hasher, ids
+
+    async def handle(
+        self, message: LoginWithDatabricksApps, uow: UnitOfWork | None = None
+    ) -> LoginResult:
+        transaction = _require_uow(uow)
+        email = message.email.strip().lower()
+        if not email:
+            raise IamDomainError("invalid credentials")
+        providers = self.providers(transaction)
+        provider = await providers.by_issuer("databricksapps")
+        if provider is None:
+            provider = SSOProvider.configure(
+                SSOProviderId(self.ids.new()), "databricksapps", "", "", is_global=True
+            )
+            await providers.add(provider)
+            await transaction.session.flush()
+        if not provider.active or not provider.is_global:
+            raise IamDomainError("invalid credentials")
+        identities = self.identities(transaction)
+        identity = await identities.get_by_subject(provider.id, email)
+        users = self.users(transaction)
+        user = (
+            await users.get(identity.user_id)
+            if identity
+            else await users.by_email(email)
+        )
+        if user is None:
+            user = User.register(
+                email,
+                self.hasher.hash(secrets.token_urlsafe(48)),
+                UserId(self.ids.new()),
+            )
+            user.verify()
+            await users.add(user)
+            await transaction.session.flush()
+        if not user.active or (not message.ignore_status and not user.verified):
+            raise IamDomainError("invalid credentials")
+        if identity is None:
+            identity = ExternalSSOIdentity.link(
+                ExternalSSOIdentityId(self.ids.new()), user.id, provider.id, email
+            )
+            await identities.add(identity)
+        return LoginResult(user.id, ())
 
 
 class IssuePreAuthTokenHandler(CommandHandler[IssuePreAuthToken, IssuedToken]):

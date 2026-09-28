@@ -18,7 +18,7 @@ from .models import (
 from .progress import NullProgressReporter, ProgressReporter
 from .source import SourceScanner, SourceScanOptions
 from .sync import SourceSyncService
-from .workspace import WorkspaceSourceRepository
+from .workspace import DEFAULT_JOBS, WorkspaceSourceRepository
 
 if TYPE_CHECKING:  # pragma: no cover
     from databricks.sdk import WorkspaceClient
@@ -62,12 +62,14 @@ class DatabricksDeploymentService:
         app_deployer: DatabricksAppDeployer,
         sync_service: SourceSyncService,
         progress: ProgressReporter | None = None,
+        jobs: int = DEFAULT_JOBS,
     ) -> None:
         """Compose the facade from an authenticated client and its services."""
         self._client = client
         self._app_deployer = app_deployer
         self._sync_service = sync_service
         self._progress = progress or NullProgressReporter()
+        self._jobs = jobs
 
     def upload(self, request: UploadRequest) -> UploadResult:
         """Transfer the selected files without comparing or deleting anything."""
@@ -102,10 +104,13 @@ class DatabricksDeploymentService:
 
     def _repository(self, remote_root: str) -> WorkspaceSourceRepository:
         """Return the remote repository for one app source folder."""
-        return WorkspaceSourceRepository(self._client, remote_root, self._progress)
+        return WorkspaceSourceRepository(
+            self._client, remote_root, self._progress, jobs=self._jobs
+        )
 
 
 __all__ = [
+    "DEFAULT_JOBS",
     "DatabricksAppDeployer",
     "DatabricksDeploymentService",
     "DeployRequest",

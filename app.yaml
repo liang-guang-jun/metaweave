@@ -10,3 +10,6 @@
 # this is the supported way to run `mw db upgrade` at boot: a second command in
 # the list would be passed to `mw` as arguments.
 command: ["uv", "run", "mw", "server", "--upgrade-db", "--host", "0.0.0.0", "--port", "8000"]
+env:
+  - name: LAKEBASE_ENDPOINT
+    valueFrom: database

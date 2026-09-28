@@ -11,6 +11,11 @@ branch_labels = None
 depends_on = None
 
 
+def _uses_sqlite() -> bool:
+    """Return whether this migration runs on SQLite."""
+    return op.get_bind().dialect.name == "sqlite"
+
+
 def upgrade() -> None:
     """Rename tenant membership storage and add system/principal identity roots."""
     op.rename_table("iam_memberships", "iam_tenant_memberships")
@@ -41,22 +46,51 @@ def upgrade() -> None:
             " UNION ALL SELECT id, 'SERVICE_PRINCIPAL' FROM iam_service_principals"
         )
     )
-    with op.batch_alter_table("iam_service_principals", recreate="always") as batch:
-        batch.create_foreign_key(
-            "fk_iam_service_principal_principal", "iam_principals", ["id"], ["id"]
+    if _uses_sqlite():
+        with op.batch_alter_table("iam_service_principals", recreate="always") as batch:
+            batch.create_foreign_key(
+                "fk_iam_service_principal_principal",
+                "iam_principals",
+                ["id"],
+                ["id"],
+            )
+        with op.batch_alter_table("iam_users", recreate="always") as batch:
+            batch.create_foreign_key(
+                "fk_iam_user_principal", "iam_principals", ["id"], ["id"]
+            )
+    else:
+        op.create_foreign_key(
+            "fk_iam_service_principal_principal",
+            "iam_service_principals",
+            "iam_principals",
+            ["id"],
+            ["id"],
         )
-    with op.batch_alter_table("iam_users", recreate="always") as batch:
-        batch.create_foreign_key(
-            "fk_iam_user_principal", "iam_principals", ["id"], ["id"]
+        op.create_foreign_key(
+            "fk_iam_user_principal",
+            "iam_users",
+            "iam_principals",
+            ["id"],
+            ["id"],
         )
 
 
 def downgrade() -> None:
     """Restore the previous tenant membership and identity schema."""
-    with op.batch_alter_table("iam_service_principals", recreate="always") as batch:
-        batch.drop_constraint("fk_iam_service_principal_principal", type_="foreignkey")
-    with op.batch_alter_table("iam_users", recreate="always") as batch:
-        batch.drop_constraint("fk_iam_user_principal", type_="foreignkey")
+    if _uses_sqlite():
+        with op.batch_alter_table("iam_service_principals", recreate="always") as batch:
+            batch.drop_constraint(
+                "fk_iam_service_principal_principal", type_="foreignkey"
+            )
+        with op.batch_alter_table("iam_users", recreate="always") as batch:
+            batch.drop_constraint("fk_iam_user_principal", type_="foreignkey")
+    else:
+        op.drop_constraint(
+            "fk_iam_service_principal_principal",
+            "iam_service_principals",
+            type_="foreignkey",
+        )
+        op.drop_constraint("fk_iam_user_principal", "iam_users", type_="foreignkey")
     op.drop_table("iam_principals")
     op.drop_index("ix_iam_system_admins_user_id", table_name="iam_system_admins")
     op.drop_table("iam_system_admins")

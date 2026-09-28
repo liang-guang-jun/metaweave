@@ -146,7 +146,17 @@ class SSOProviderRepository(ABC):
     @abstractmethod
     async def get(self, provider_id: SSOProviderId) -> SSOProvider | None: ...
     @abstractmethod
+    async def by_issuer(self, issuer: str) -> SSOProvider | None: ...
+    @abstractmethod
     async def add(self, provider: SSOProvider) -> None: ...
+    @abstractmethod
+    async def has_membership(
+        self, provider_id: SSOProviderId, tenant_id: TenantId | None = None
+    ) -> bool: ...
+    @abstractmethod
+    async def add_membership(
+        self, provider_id: SSOProviderId, tenant_id: TenantId
+    ) -> None: ...
 
 
 class ExternalSSOIdentityRepository(ABC):

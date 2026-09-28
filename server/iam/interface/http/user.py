@@ -98,7 +98,7 @@ async def register_user(
     container: Annotated[Container, Depends(get_container)],
 ) -> UserResponse:
     """Register a user account when self-service registration is enabled."""
-    register = container.config().registration
+    register = container.config().iam.registration
     if not register.enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

@@ -77,6 +77,7 @@ from ...iam.application.events import IamDomainEventMapper
 from ...iam.application.handlers import (
     AcceptInvitationHandler,
     AddGroupMemberHandler,
+    AddSSOProviderMembershipHandler,
     BatchCheckAccessHandler,
     BootstrapSystemAdminHandler,
     ChangePasswordHandler,
@@ -102,6 +103,7 @@ from ...iam.application.handlers import (
     ListAvailableTenantsHandler,
     ListTenantMembershipsHandler,
     ListUserMembershipsHandler,
+    LoginWithDatabricksAppsHandler,
     LoginWithOidcHandler,
     LoginWithPasswordHandler,
     PromoteMemberHandler,
@@ -126,6 +128,7 @@ from ...iam.application.handlers import (
 from ...iam.application.messages import (
     AcceptInvitation,
     AddGroupMember,
+    AddSSOProviderMembership,
     BatchCheckAccess,
     BootstrapSystemAdmin,
     ChangePassword,
@@ -151,6 +154,7 @@ from ...iam.application.messages import (
     ListAvailableTenants,
     ListTenantMemberships,
     ListUserMemberships,
+    LoginWithDatabricksApps,
     LoginWithOidc,
     LoginWithPassword,
     PromoteMember,
@@ -283,6 +287,7 @@ class IamContextInitializer:
             DisableMembership,
             RestoreMembership,
             ConfigureSSOProvider,
+            AddSSOProviderMembership,
             LinkExternalSSOIdentity,
             CreateServicePrincipal,
             IssueApiKey,
@@ -295,6 +300,7 @@ class IamContextInitializer:
             RevokeAccess,
             DeleteAcl,
             LoginWithPassword,
+            LoginWithDatabricksApps,
             IssuePreAuthToken,
             LoginWithOidc,
             SelectTenantAndIssueTokens,
@@ -305,10 +311,10 @@ class IamContextInitializer:
 
         handlers = container.handlers()
         policy = PasswordPolicyValidator(
-            self.config.password_policy.min_length,
-            self.config.password_policy.require_upper,
-            self.config.password_policy.require_digit,
-            self.config.password_policy.require_symbol,
+            self.config.iam.password.min_length,
+            self.config.iam.password.require_upper,
+            self.config.iam.password.require_digit,
+            self.config.iam.password.require_symbol,
         )
         handlers.register(
             RegisterUser,
@@ -415,6 +421,12 @@ class IamContextInitializer:
             ),
         )
         handlers.register(
+            AddSSOProviderMembership,
+            AddSSOProviderMembershipHandler(
+                provider_factory, d.membership_factory, permissions
+            ),
+        )
+        handlers.register(
             LinkExternalSSOIdentity,
             LinkExternalSSOIdentityHandler(
                 provider_factory,
@@ -493,12 +505,23 @@ class IamContextInitializer:
             ),
         )
         handlers.register(
+            LoginWithDatabricksApps,
+            LoginWithDatabricksAppsHandler(
+                d.user_factory,
+                provider_factory,
+                identity_factory,
+                read_memberships,
+                d.password_hasher,
+                d.ids,
+            ),
+        )
+        handlers.register(
             IssuePreAuthToken,
             IssuePreAuthTokenHandler(
-                PyJwtTokenIssuer(self.config.token.secret),
-                self.config.token.issuer,
-                self.config.token.audience,
-                timedelta(seconds=self.config.token.access_ttl_seconds),
+                PyJwtTokenIssuer(self.config.iam.token.secret),
+                self.config.iam.token.issuer,
+                self.config.iam.token.audience,
+                timedelta(seconds=self.config.iam.token.access_ttl_seconds),
                 d.clock,
             ),
         )
@@ -513,10 +536,10 @@ class IamContextInitializer:
             SelectTenantAndIssueTokensHandler(
                 d.membership_factory,
                 d.session_factory,
-                PyJwtTokenIssuer(self.config.token.secret),
-                self.config.token.issuer,
-                self.config.token.audience,
-                ttl=timedelta(seconds=self.config.token.access_ttl_seconds),
+                PyJwtTokenIssuer(self.config.iam.token.secret),
+                self.config.iam.token.issuer,
+                self.config.iam.token.audience,
+                ttl=timedelta(seconds=self.config.iam.token.access_ttl_seconds),
                 clock=d.clock,
                 ids=d.ids,
             ),

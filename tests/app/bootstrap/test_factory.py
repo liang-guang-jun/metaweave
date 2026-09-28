@@ -8,7 +8,12 @@ def test_container_exposes_config_and_sqlite_dependencies() -> None:
     config = AppConfig.model_validate(
         {
             "app": {"name": "test"},
-            "database": {"url": "sqlite+aiosqlite:///:memory:"},
+            "database": {
+                "provider": "sqlite",
+                "driver": "aiosqlite",
+                "database": ":memory:",
+                "auth": {"type": "none"},
+            },
             "logging": {"colors": False},
         }
     )

@@ -29,6 +29,16 @@ def test_healthz_reads_the_container_from_app_state(
         "register_enabled": True,
         "register_skip_verify": True,
         "token_header": "X-Bearer-Token",
+        "identity_providers": {
+            "local": {"enabled": True},
+            "databricksapps": {
+                "enabled": True,
+                "headers": {
+                    "email": "X-Forwarded-Email",
+                    "access_token": "X-Forwarded-Access-Token",
+                },
+            },
+        },
         "password_policy": {
             "min_length": 12,
             "require_upper": True,

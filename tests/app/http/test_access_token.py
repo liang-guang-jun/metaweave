@@ -30,9 +30,8 @@ def _serve(*, header: str | None = None) -> Iterator[TestClient]:
     config = AppConfig.model_validate(
         {
             "logging": {"colors": False},
-            "database": {"url": "sqlite+aiosqlite:///:memory:"},
-            "password_policy": {"min_length": 8},
-            "token": token_config,
+            "database": {"provider": "sqlite", "driver": "aiosqlite", "database": ":memory:", "auth": {"type": "none"}},
+            "iam": {"password": {"min_length": 8}, "token": token_config},
         }
     )
     container = create_container(config)

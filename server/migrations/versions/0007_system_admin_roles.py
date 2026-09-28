@@ -26,14 +26,15 @@ def upgrade() -> None:
     # Existing relationship rows must receive their ACL representation before
     # application authorization starts consulting ACLs as the source of truth.
     connection = op.get_bind()
-    membership_rows = list(
-        connection.execute(
-            sa.text(
-                "SELECT tenant_id, user_id, membership_type "
-                "FROM iam_tenant_memberships WHERE active = 1"
-            )
-        ).mappings()
+    membership_result = connection.execute(
+        sa.text(
+            "SELECT tenant_id, user_id, membership_type "
+            "FROM iam_tenant_memberships WHERE active = TRUE"
+        )
     )
+    if membership_result is None:
+        return
+    membership_rows = list(membership_result.mappings())
     for row in membership_rows:
         tenant_id = str(row["tenant_id"])
         scope = connection.execute(
@@ -55,9 +56,14 @@ def upgrade() -> None:
             )
         connection.execute(
             sa.text(
-                "INSERT OR IGNORE INTO iam_acl_entries "
+                "INSERT INTO iam_acl_entries "
                 "(acl_id, subject_type, subject_id, action, effect) "
-                "VALUES (:acl_id, 'USER', :user_id, :action, 'ALLOW')"
+                "SELECT :acl_id, 'USER', :user_id, :action, 'ALLOW' "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM iam_acl_entries "
+                "WHERE acl_id = :acl_id AND subject_type = 'USER' "
+                "AND subject_id = :user_id AND action = :action"
+                ")"
             ),
             {
                 "acl_id": scope,
@@ -92,14 +98,19 @@ def upgrade() -> None:
         )
     for row in list(
         connection.execute(
-            sa.text("SELECT user_id FROM iam_system_admins WHERE active = 1")
+            sa.text("SELECT user_id FROM iam_system_admins WHERE active = TRUE")
         ).mappings()
     ):
         connection.execute(
             sa.text(
-                "INSERT OR IGNORE INTO iam_acl_entries "
+                "INSERT INTO iam_acl_entries "
                 "(acl_id, subject_type, subject_id, action, effect) "
-                "VALUES (:acl_id, 'USER', :user_id, 'system.super_admin', 'ALLOW')"
+                "SELECT :acl_id, 'USER', :user_id, 'system.super_admin', 'ALLOW' "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM iam_acl_entries "
+                "WHERE acl_id = :acl_id AND subject_type = 'USER' "
+                "AND subject_id = :user_id AND action = 'system.super_admin'"
+                ")"
             ),
             {"acl_id": system_scope, "user_id": str(row["user_id"])},
         )

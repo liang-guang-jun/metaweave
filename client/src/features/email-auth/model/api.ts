@@ -16,6 +16,10 @@ export type ServiceStatus = {
   register_enabled: boolean;
   register_skip_verify: boolean;
   token_header: string;
+  identity_providers: {
+    local: { enabled: boolean };
+    databricksapps: { enabled: boolean; headers: { email: string; access_token: string } };
+  };
   password_policy: PasswordPolicy;
 };
 
@@ -70,5 +74,17 @@ export async function loginUser(
     token = tenantResponse.data.access_token;
   }
   setAccessToken(token);
+  return response.data;
+}
+
+export async function loginWithDatabricksApps(tenantId?: string) {
+  const response = await api.post<TokenResponse>("/iam/auth/databricksapps");
+  setAccessToken(response.data.access_token);
+  if (tenantId) {
+    const tenant = await api.post<TokenResponse>("/iam/auth/tenant-token", undefined, {
+      headers: { "X-Tenant-ID": tenantId },
+    });
+    setAccessToken(tenant.data.access_token);
+  }
   return response.data;
 }

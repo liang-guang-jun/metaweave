@@ -77,7 +77,7 @@ def _access_token(
     ``token.header`` (``X-Bearer-Token`` by default) wins over the standard
     header, whose value a hosting platform proxy may replace with its own token.
     """
-    header_name = get_container(request).config().token.header
+    header_name = get_container(request).config().iam.token.header
     token = request.headers.get(header_name) or bearer
     if token and token.lower().startswith(_BEARER_PREFIX):
         token = token[len(_BEARER_PREFIX) :]
@@ -91,10 +91,10 @@ def _decode_token(token: str, container: Container) -> AuthenticatedPrincipal:
     try:
         payload = jwt.decode(
             token,
-            config.token.secret,
+            config.iam.token.secret,
             algorithms=["HS256"],
-            audience=config.token.audience,
-            issuer=config.token.issuer,
+            audience=config.iam.token.audience,
+            issuer=config.iam.token.issuer,
         )
         return AuthenticatedPrincipal(
             user_id=UUID(str(payload["sub"])),

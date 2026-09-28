@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol, cast
 
 from sqlalchemy import event
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -17,10 +17,15 @@ from sqlalchemy.ext.asyncio import (
 
 
 def create_async_engine(
-    url: str,
+    url: str | URL,
     *,
     echo: bool = False,
     sqlite_busy_timeout_ms: int | None = None,
+    pool_size: int | None = None,
+    max_overflow: int | None = None,
+    pool_timeout: int | None = None,
+    pool_recycle: int | None = None,
+    async_creator: object | None = None,
 ) -> AsyncEngine:
     """Build an async engine for any SQLAlchemy-supported async dialect.
 
@@ -29,7 +34,18 @@ def create_async_engine(
     SQLite-specific validation or connection hooks.
     """
     parsed_url = make_url(url)
-    engine = sqlalchemy_create_async_engine(url, echo=echo)
+    kwargs: dict[str, object] = {"echo": echo}
+    if pool_size is not None:
+        kwargs["pool_size"] = pool_size
+    if max_overflow is not None:
+        kwargs["max_overflow"] = max_overflow
+    if pool_timeout is not None:
+        kwargs["pool_timeout"] = pool_timeout
+    if pool_recycle is not None:
+        kwargs["pool_recycle"] = pool_recycle
+    if async_creator is not None:
+        kwargs["async_creator"] = async_creator
+    engine = sqlalchemy_create_async_engine(url, **kwargs)
     if parsed_url.get_backend_name() != "sqlite":
         return engine
 

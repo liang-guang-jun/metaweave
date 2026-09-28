@@ -18,6 +18,7 @@ import { AuthSkeleton } from "@/shared/ui/Skeleton";
 import { routes } from "@/shared/config/routes";
 import type { AuthPageMode } from "@/features/email-auth/model/types";
 import { toast } from "sonner";
+import { getApiError, loginWithDatabricksApps } from "@/features/email-auth/model/api";
 
 const AuthShell = styled.main`
   display: grid;
@@ -47,6 +48,7 @@ export function AuthPage({ mode }: AuthPageProps) {
   const { tenantId } = useParams();
   const [booting, setBooting] = useState(true);
   const [switching, setSwitching] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState(false);
   const isRegister = mode === "register";
   const { data: status } = useServiceStatus();
   const registrationEnabled = status?.register_enabled;
@@ -74,6 +76,18 @@ export function AuthPage({ mode }: AuthPageProps) {
   const authSuccess = (completedMode: AuthPageMode) => {
     if (completedMode === "register") navigate(routes.login);
     else navigate(routes.workspace);
+  };
+
+  const continueWithDatabricksApps = async () => {
+    setSsoLoading(true);
+    try {
+      await loginWithDatabricksApps(tenantId);
+      navigate(routes.workspace);
+    } catch (error) {
+      toast.error(getApiError(error, "Unable to sign in with Databricks Apps."));
+    } finally {
+      setSsoLoading(false);
+    }
   };
 
   return (
@@ -105,18 +119,15 @@ export function AuthPage({ mode }: AuthPageProps) {
                   ? "Start weaving your team’s data context together."
                   : "Sign in to open your data workspace."}
               </Copy>
-              <EmailAuthForm
+              {(isRegister || status?.identity_providers.local.enabled !== false) && <EmailAuthForm
                 mode={mode}
                 tenantId={tenantId}
                 onSuccess={authSuccess}
-              />
-              {!isRegister && (
+              />}
+              {!isRegister && status?.identity_providers.databricksapps.enabled && (
                 <SsoOptions
-                  onContinue={() =>
-                    toast.info(
-                      "SSO provider setup is required before this sign-in method can be used.",
-                    )
-                  }
+                  onContinue={continueWithDatabricksApps}
+                  disabled={ssoLoading}
                 />
               )}
               <FooterNote>
